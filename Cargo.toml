@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2025 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# SPDX-License-Identifier: Apache-2.0
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+homepage = "https://github.com/eclipse-opensovd/opensovd-core"
+
+[workspace]
+resolver = "3"
+members = [
+  "sovd-handlers",
+  "sovd-server",
+]
+
+[workspace.dependencies]
+hyper = "0.14"
+log = "0.4.28"
+openapi_client = { path = "target/generated/sovd-autogen-code"}
+openssl = { version = "0.10", features = ["vendored"] } 
+procfs = "0.8.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sovd-handlers = { path = "sovd-handlers" }
+tokio = { version = "1.47.1", features = ["full"] }
