@@ -121,12 +121,6 @@ pub fn get_server_config() -> Option<&'static ServerConfig> {
 /// Builds an SSL implementation for Simple HTTPS from some hard-coded file names
 /// 
 
-#[derive(Debug, Deserialize, Serialize)]
-struct ErrorResponse {
-    error_code: String,
-    message: String,
-}
-
 use mdns_sd::{ServiceDaemon, ServiceInfo, ServiceEvent};
 
 fn create_m_dns(server_config: &ServerConfig, mdns: &ServiceDaemonWrapper) {

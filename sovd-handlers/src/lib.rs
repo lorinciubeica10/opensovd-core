@@ -120,9 +120,9 @@ pub fn find_and_create_read_value(response: &str, search_identifier: Option<u64>
         {
             // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
             let mut collect_data:Map<String, JsonValue> = Map::new();
-            let any_value:Vec<_> = element.records.into_iter().map(|record| (
+            let any_value:Vec<_> = element.records.into_iter().map(|record| 
                 collect_data.insert(record.name, JsonValue::String(record.value))
-            )).collect();
+            ).collect();
             
             return Some(EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
@@ -149,9 +149,9 @@ pub fn filter_by_writable(response: &str, writable: bool) -> Result<Vec<EntityCo
         if element.is_writable == writable {
             // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
             let mut collect_data:Map<String, JsonValue> = Map::new();
-            let any_value:Vec<_> = element.records.into_iter().map(|record| (
+            let any_value:Vec<_> = element.records.into_iter().map(|record| 
                 collect_data.insert(record.name, JsonValue::String(record.value))
-            )).collect();
+            ).collect();
 
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
@@ -178,9 +178,9 @@ pub fn find_by_identifier(response: &str, search_identifier: u64) -> Option<Enti
     if let Some(element) = json_array.into_iter().find(|e| e.identifier == search_identifier) {
         // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
         let mut collect_data:Map<String, JsonValue> = Map::new();
-        let any_value:Vec<_> = element.records.into_iter().map(|record| (
+        let any_value:Vec<_> = element.records.into_iter().map(|record| 
                 collect_data.insert(record.name, JsonValue::String(record.value))
-            )).collect();
+            ).collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
             data: to_value(any_value).expect("Failed to find by identifier"),
@@ -205,9 +205,9 @@ pub fn find_by_name(response: &str, search_name: &str) -> Option<EntityCollectio
     if let Some(element) = json_array.into_iter().find(|e| e.name == search_name) {
         // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
         let mut collect_data:Map<String, JsonValue> = Map::new();
-        let any_value:Vec<_> = element.records.into_iter().map(|record| (
+        let any_value:Vec<_> = element.records.into_iter().map(|record| 
                 collect_data.insert(record.name, JsonValue::String(record.value))
-            )).collect();
+            ).collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
             data: to_value(any_value).expect("Failed to find by name"),
