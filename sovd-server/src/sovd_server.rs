@@ -15,12 +15,6 @@
 
 #![allow(unused_imports)]
 
-extern crate libc;
-extern crate procfs;
-
-use std::process::Command;
-use std::ffi::OsString;
-use std::os::unix::ffi::OsStringExt; // Import for gethostname function
 use std::path::Path;
 use serde_json::Value;
 use std::process::Stdio;
@@ -46,7 +40,7 @@ use openssl::ssl::{Ssl, SslAcceptor, SslAcceptorBuilder, SslFiletype, SslMethod}
 use regex::Regex;
 use chrono::Utc;
 use chrono::DateTime;
-use procfs::process::all_processes;
+
 use serde_json::Error as SerdeError;
 use std::str::from_utf8;
 use std::env;
@@ -579,7 +573,7 @@ impl<C> Api<C> for Server<C> where C: Has<XSpanIdString> + Send + Sync
         match entity_collection {
             EntityCollectionEntityIdDataCategoriesGetEntityCollectionParameter::Apps =>  {
             for resource_name in &resource_names {
-                    let id = format!("{}-{}", entity_id, resource_name.to_lowercase());
+                    let id = format!("{}", resource_name.to_lowercase());
                     let name = format!(
                         "Current {} usage for {} {}",
                         resource_name,
@@ -844,15 +838,39 @@ impl<C> Api<C> for Server<C> where C: Has<XSpanIdString> + Send + Sync
                 },
                 EntityCollectionEntityIdDataCategoriesGetEntityCollectionParameter::Apps => {
                     info!("Apps case: collection-ID {} entity-ID {} data-ID {}", entity_collection, entity_id, data_id);
-                    let resource_to_check = get_before_last_dash(&entity_id);
-                    let pid = get_last_part_after_dash(&entity_id);
+                    // let resource_to_check = get_before_last_dash(&entity_id);
+                    // let pid = get_last_part_after_dash(&entity_id);
+
+                    let tokens = entity_id.split('-');
+
+                    // Check, if last token is a number (is the PID in that case)
+                    let last_token = tokens.clone().last().unwrap();
+                    let pid = match last_token.parse::<u32>() {
+                        Ok(pid) => pid.to_string(),
+                        Err(_) => "".to_string()
+                    };
+                    
+                    let mut resource = String::new();
+                    for token in tokens {
+                        if token.ne(last_token) {
+                            resource.push_str(token);
+                            resource.push('-');
+                        } else if pid.is_empty() {
+                            resource.push_str(token);
+                        } else {
+                            resource.remove(resource.len()-1);
+                        }
+                    }
     
-                    if let Some(_app) = find_single_process(&resource_to_check, &pid, &server_config.base_uri) {
+                    if let Some(app) = find_single_process(&resource, &pid, &server_config.base_uri) {
                         let resource = get_last_part_after_dash(&data_id);
-                        let pid_to_monitor = get_last_part_after_dash(&entity_id);
+                        let tokens = app.id.split('-');
+                        let pid_to_monitor = tokens.clone().last().unwrap();
+                        // let pid_to_monitor = get_last_part_after_dash(&entity_id);
                         let app_name = get_first_part_after_dash(&entity_id);
-    
-                        let response = handle_app_resource(resource.as_str(), pid_to_monitor.as_str(), app_name.as_str(), data_id.as_str());
+                        let response = 
+                            handle_app_resource(resource.as_str(), &pid_to_monitor, app_name.as_str(), data_id.as_str());
+
                         Ok(response)
                     } else if server_config.get_sovd_mode() == "gateway" {
                         let mdns = ServiceDaemonWrapper::new(ServiceDaemon::new().expect("Failed to create daemon"));
@@ -1486,10 +1504,28 @@ impl<C> Api<C> for Server<C> where C: Has<XSpanIdString> + Send + Sync
     
         if let Some(server_config) = get_server_config() {
             info!("Server configuration initialized!");
-    
             if entity_collection == EntityCollectionEntityIdDataCategoriesGetEntityCollectionParameter::Apps {
-                let resource = get_before_last_dash(&String::from(entity_id.clone()));
-                let pid = get_last_part_after_dash(&String::from(entity_id.clone()));
+                let tokens = entity_id.split('-');
+
+                // Check, if last token is a number (is the PID in that case)
+                let last_token = tokens.clone().last().unwrap();
+                let pid = match last_token.parse::<u32>() {
+                    Ok(pid) => pid.to_string(),
+                    Err(_) => "".to_string()
+                };
+                
+                let mut resource = String::new();
+                for token in tokens {
+                    if token.ne(last_token) {
+                        resource.push_str(token);
+                        resource.push('-');
+                    } else if pid.is_empty() {
+                        resource.push_str(token);
+                    } else {
+                        resource.remove(resource.len()-1);
+                    }
+                }
+
                 let app_id = String::from(entity_id.clone());
                 let mut _comp_id = "telematics";
                 

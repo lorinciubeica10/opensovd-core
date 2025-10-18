@@ -18,13 +18,11 @@ use hyper::{Client, Request, Body, Response};
 use hyper::client::HttpConnector;
 use serde_json::{Value, Map};
 
-use procfs::process::Process;
-
 use std::str;
 use log::{info, error};
-use sysinfo::{System, Pid, RefreshKind, CpuRefreshKind};
+use sysinfo::{CpuRefreshKind, Pid, ProcessRefreshKind, ProcessStatus, RefreshKind, System};
 use std::fs;
-extern crate procfs;
+
 use std::net::TcpStream;
 
 use std::time::Duration;
@@ -38,7 +36,6 @@ use std::collections::{HashMap, BTreeMap, HashSet};
 
 use serde_json::json;
 
-use procfs::process::all_processes;
 
 use sysinfo::Disks;
 
@@ -318,56 +315,53 @@ fn create_group(
         .collect())
 }
 
-pub fn find_single_process(search_term: &str, pid_str: &str, base_uri: &str) -> Option<EntityCollectionGet200ResponseItemsInner> {
-    info!("Starting find_single_process with search_term: '{}' and base_uri: '{}'", search_term, base_uri);
+/// Returns a process entity element for the given process name 
+/// 
+/// # Arguments
+///
+/// * `process_name` - A string slice that holds the name of the process
+/// * `process_pid` - A string slice that holds the pid of the process
+/// * `base_uri` - A string slice that holds the base uri
+/// 
+/// # Examples
+///
+pub fn find_single_process(process_name: &str, process_pid: &str, base_uri: &str) -> Option<EntityCollectionGet200ResponseItemsInner> {
+    info!("Starting find_single_process with process_name: '{}' and base_uri: '{}'", process_name, base_uri);
 
-    let all_processes = all_processes().unwrap(); // Retrieve all running processes
-    info!("Retrieved {} processes", all_processes.len());
-
-    // Parse the pid_str to i32
-    let pid = match pid_str.parse::<i32>() {
-        Ok(pid) => pid,
-        Err(_) => {
-            info!("Invalid pid: '{}'", pid_str);
-            return None;
-        }
-    };
-
-    // Iterate over each process
-    for process in all_processes {
-        if let Ok(cmd) = process.cmdline() { // Retrieve the command line arguments of the process
-            let cmd_string = cmd.join(" "); // Convert the command line arguments into a single string
-            if cmd_string.contains(search_term) && process.stat.pid == pid {
-                info!("Found matching process with search_term: '{}' and pid: '{}'", search_term, pid);
-
-                let name = search_term.replace(" ", "-"); // Replace spaces with hyphens
-
-                // Check if the process is not in an idle state
-                if process.stat.state != 'I' {
-                    let pid_name = format!("{}-{}", name, pid);
-                    let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
-
-                    info!("Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'", pid, pid_name, href);
-
-                    let entity_ref = EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
-                    return Some(entity_ref); // Return the EntityReference immediately
-                } else {
-                    info!("Process with pid: {} is in idle state, skipping", process.stat.pid);
-                }
-            }
-        } else {
-            info!("Failed to retrieve cmdline for a process");
-        }
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
+    
+    let mut processes: BTreeMap<u32, &sysinfo::Process> = BTreeMap::new();
+    for process in system.processes_by_exact_name(process_name) {
+        processes.insert(process.pid().as_u32(), process);
     }
 
-    info!("No matching process found for search_term: '{}' with pid: '{}'", search_term, pid);
-    None // Return None if no matching process is found
+    let first_entry = processes.first_entry().unwrap();
+    let mut process = first_entry.get();        
+    if !process_pid.is_empty() {
+        let pid: u32 = process_pid.parse().unwrap();
+        process = processes.get(&pid).unwrap();
+    } 
+    info!("Found process with process_name: '{}' and pid: '{}'", process_name, process.pid());
+
+    let name = process_name.replace(" ", "-"); // Replace spaces with hyphens
+    let pid_name = format!("{}-{}", name, process.pid());
+    let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
+
+    info!("Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'", process.pid(), pid_name, href);
+
+    let entity_ref = 
+        EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
+    return Some(entity_ref) // Return the EntityReference immediately    
 }
 
 
 // Function to search and return processes
 pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityCollectionGet200ResponseItemsInner> {
-    let all_processes = all_processes().unwrap(); // Retrieve all running processes
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
+    
+    let all_processes = system.processes(); // Retrieve all running processes
     let mut response_body = Vec::new(); // Initialize an empty vector for EntityReferences
 
     // Convert search terms into a set for more efficient searching
@@ -375,22 +369,21 @@ pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityColl
 
     // Iterate over each process
     for process in all_processes {
-        if let Ok(cmd) = process.cmdline() { // Retrieve the command line arguments of the process
-            let cmd_string = cmd.join(" "); // Convert the command line arguments into a single string
+        let cmd = process.1.cmd(); // Retrieve the command line arguments of the process
+        let cmd_string = cmd.join(" "); // Convert the command line arguments into a single string
 
-            // Check if any of the search terms are contained in cmd_string
-            for &term in &search_terms_set {
-                if cmd_string.contains(term) {
-                    let name = term.replace(" ", "-"); // Replace spaces with hyphens
+        // Check if any of the search terms are contained in cmd_string
+        for &term in &search_terms_set {
+            if cmd_string.contains(term) {
+                let name = term.replace(" ", "-"); // Replace spaces with hyphens
 
-                    // Check if the process is not in an idle state
-                    if process.stat.state != 'I' {
-                        let pid = process.stat.pid;
-                        let pid_name = format!("{}-{}", name, pid);
-                        let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
-                        let entity_ref = EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
-                        response_body.push(entity_ref); // Add EntityReference to the response vector
-                    }
+                // Check if the process is not in an idle state
+                if process.1.status() != ProcessStatus::Idle {
+                    let pid = process.1.pid();
+                    let pid_name = format!("{}-{}", name, pid);
+                    let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
+                    let entity_ref = EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
+                    response_body.push(entity_ref); // Add EntityReference to the response vector
                 }
             }
         }
@@ -401,10 +394,12 @@ pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityColl
 
 // Find an entity by name and return its reference
 pub fn find_entity_by_name(search_term: &str, base_uri: &str) -> Option<EntityCollectionGet200ResponseItemsInner> {
-    let all_processes = all_processes().unwrap(); // Retrieve all running processes
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
+    let all_processes = system.processes(); // Retrieve all running processes
     for process in all_processes 
     {
-        let cmd = process.cmdline().unwrap();  // Retrieve the command line of the process
+        let cmd = process.1.cmd();  // Retrieve the command line of the process
         let name = if !cmd.is_empty() {
           let name = Path::new(&cmd[0]).file_name().unwrap_or_default().to_string_lossy().to_string();
           let name = if let Some(idx) = name.rfind('.') {
@@ -418,11 +413,11 @@ pub fn find_entity_by_name(search_term: &str, base_uri: &str) -> Option<EntityCo
                 "".to_string()
         };
 
-        let name_with_pid = format!("{}-{}", name, process.stat.pid); // Extend name with PID
+        let name_with_pid = format!("{}-{}", name, process.1.pid()); // Extend name with PID
 
         // Check if the process is not in an idle state, the name is not empty, and contains the search term
-        if process.stat.state != 'I' && !name.is_empty() && name_with_pid.contains(search_term) {
-            let pid = process.stat.pid;
+        if process.1.status() != ProcessStatus::Idle && !name.is_empty() && name_with_pid.contains(search_term) {
+            let pid = process.1.pid();
             let href = format!("{}/apps/{}", base_uri, name_with_pid); // Construct the resource URI
             return Some(EntityCollectionGet200ResponseItemsInner::new(pid.to_string(), name.clone(), href)); // Return entity reference
         }
@@ -502,11 +497,12 @@ pub fn disk_total_space() {
     }
 }
 
-pub fn get_process_filesize(pid: i32) -> Option<u64> {
-    let process = Process::new(pid).ok()?; // Use the `ok` method to handle the `Result` and return `None` if there's an error
-
-    let stat = process.stat().ok()?; // Use the `ok` method to handle the `Result` and return `None` if there's an error
-    let final_size = stat.rss_bytes() as u64 / 1000;
+pub fn get_process_filesize(pid: u32) -> Option<u64> {
+    let system = System::new_with_specifics(
+    RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
+   
+    let process = system.process(Pid::from_u32(pid)).unwrap();
+    let final_size = process.memory();
 
     info!("get_process_filesize {}", final_size);
 
