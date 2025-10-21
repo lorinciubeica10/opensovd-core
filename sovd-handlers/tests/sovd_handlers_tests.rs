@@ -11,8 +11,9 @@ mod sovd_handlers_tests {
         let process_name = String::from("systemd-journal");
 
         let system = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
-    
+            RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+        );
+
         let mut processes: BTreeMap<u32, &sysinfo::Process> = BTreeMap::new();
         for process in system.processes_by_exact_name(&process_name) {
             processes.insert(process.pid().as_u32(), process);
@@ -32,12 +33,13 @@ mod sovd_handlers_tests {
             href.push('-');
             href.push_str(&process.0.to_string());
 
-            let result = sovd_handlers::find_single_process(&process_name, &process.0.to_string(), &base_uri);
-            let expected_result = EntityCollectionGet200ResponseItemsInner::new(
-                id,
-                process_name.to_string(),
-                href,
+            let result = sovd_handlers::find_single_process(
+                &process_name,
+                &process.0.to_string(),
+                &base_uri,
             );
+            let expected_result =
+                EntityCollectionGet200ResponseItemsInner::new(id, process_name.to_string(), href);
             assert_eq!(result.unwrap(), expected_result);
         }
     }

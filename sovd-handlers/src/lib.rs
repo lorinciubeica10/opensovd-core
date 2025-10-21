@@ -12,46 +12,44 @@
 */
 
 use serde::{Deserialize, Serialize};
-use serde_json::{to_value, Value as JsonValue};
+use serde_json::{Value as JsonValue, to_value};
 
-use hyper::{Client, Request, Body, Response};
 use hyper::client::HttpConnector;
-use serde_json::{Value, Map};
+use hyper::{Body, Client, Request, Response};
+use serde_json::{Map, Value};
 
-use std::str;
-use log::{info, error};
-use sysinfo::{CpuRefreshKind, Pid, ProcessRefreshKind, ProcessStatus, RefreshKind, System};
+use log::{error, info};
 use std::fs;
+use std::str;
+use sysinfo::{CpuRefreshKind, Pid, ProcessRefreshKind, ProcessStatus, RefreshKind, System};
 
 use std::net::TcpStream;
 
 use std::time::Duration;
 
-use hyper::{header::HeaderMap, Method};
-use std::sync::Mutex;
+use hyper::{Method, header::HeaderMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::path::Path;
 use std::str::FromStr;
-use std::collections::{HashMap, BTreeMap, HashSet};
+use std::sync::Mutex;
 
 use serde_json::json;
 
-
 use sysinfo::Disks;
 
-use openapi_client::EntityCollectionEntityIdDataGroupsGetResponse;
-use openapi_client::EntityCollectionEntityIdDataGetResponse;
 use openapi_client::EntityCollectionEntityIdDataDataIdGetResponse;
+use openapi_client::EntityCollectionEntityIdDataGetResponse;
+use openapi_client::EntityCollectionEntityIdDataGroupsGetResponse;
 use openapi_client::EntityCollectionEntityIdGetResponse;
 use openapi_client::models::*;
 
-use tokio::time::timeout;
 use lazy_static::lazy_static;
+use tokio::time::timeout;
 // Only for testing
 lazy_static! {
     pub static ref IDENT_DATA_RESPONSE: Mutex<Vec<JsonValue>> = Mutex::new(vec![]);
 }
-
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DiskStats {
@@ -67,7 +65,6 @@ pub struct DiskStats {
     io_time: u64,
     weighted_io_time: u64,
 }
-
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Record {
@@ -106,7 +103,11 @@ struct DiskSpaceInfo {
 }
 
 // Function that searches by identifier or name and creates a EntityCollectionEntityIdDataDataIdGet200Response object
-pub fn find_and_create_read_value(response: &str, search_identifier: Option<u64>, search_name: Option<&str>) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
+pub fn find_and_create_read_value(
+    response: &str,
+    search_identifier: Option<u64>,
+    search_name: Option<&str>,
+) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
     // Deserialization of JSON-Arrays
     let json_array: Vec<JsonElement> = serde_json::from_str(response).ok()?;
 
@@ -116,16 +117,18 @@ pub fn find_and_create_read_value(response: &str, search_identifier: Option<u64>
             && search_name.map_or(true, |name| element.name == name)
         {
             // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
-            let mut collect_data:Map<String, JsonValue> = Map::new();
-            let any_value:Vec<_> = element.records.into_iter().map(|record| 
-                collect_data.insert(record.name, JsonValue::String(record.value))
-            ).collect();
-            
+            let mut collect_data: Map<String, JsonValue> = Map::new();
+            let any_value: Vec<_> = element
+                .records
+                .into_iter()
+                .map(|record| collect_data.insert(record.name, JsonValue::String(record.value)))
+                .collect();
+
             return Some(EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
                 data: to_value(any_value).expect("Failed to create read value"),
-                errors: None,  
-                schema: None,  
+                errors: None,
+                schema: None,
             });
         }
     }
@@ -134,9 +137,13 @@ pub fn find_and_create_read_value(response: &str, search_identifier: Option<u64>
 }
 
 // Your existing function with Result as the return type
-pub fn filter_by_writable(response: &str, writable: bool) -> Result<Vec<EntityCollectionEntityIdDataDataIdGet200Response>, Box<dyn Error>> {
+pub fn filter_by_writable(
+    response: &str,
+    writable: bool,
+) -> Result<Vec<EntityCollectionEntityIdDataDataIdGet200Response>, Box<dyn Error>> {
     // Deserialization of JSON-Arrays
-    let json_array: Vec<JsonElement> = serde_json::from_str(response).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+    let json_array: Vec<JsonElement> =
+        serde_json::from_str(response).map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
     // Vector to store filtered elements
     let mut matching_elements = Vec::new();
@@ -145,10 +152,12 @@ pub fn filter_by_writable(response: &str, writable: bool) -> Result<Vec<EntityCo
     for element in json_array {
         if element.is_writable == writable {
             // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
-            let mut collect_data:Map<String, JsonValue> = Map::new();
-            let any_value:Vec<_> = element.records.into_iter().map(|record| 
-                collect_data.insert(record.name, JsonValue::String(record.value))
-            ).collect();
+            let mut collect_data: Map<String, JsonValue> = Map::new();
+            let any_value: Vec<_> = element
+                .records
+                .into_iter()
+                .map(|record| collect_data.insert(record.name, JsonValue::String(record.value)))
+                .collect();
 
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
@@ -167,22 +176,30 @@ pub fn filter_by_writable(response: &str, writable: bool) -> Result<Vec<EntityCo
 }
 
 // Function that returns the first found element with identical identifier
-pub fn find_by_identifier(response: &str, search_identifier: u64) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
+pub fn find_by_identifier(
+    response: &str,
+    search_identifier: u64,
+) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
     // Deserialization of the JSON array
     let json_array: Vec<JsonElement> = serde_json::from_str(response).ok()?;
 
     // Search for identifier in the JSON array
-    if let Some(element) = json_array.into_iter().find(|e| e.identifier == search_identifier) {
+    if let Some(element) = json_array
+        .into_iter()
+        .find(|e| e.identifier == search_identifier)
+    {
         // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
-        let mut collect_data:Map<String, JsonValue> = Map::new();
-        let any_value:Vec<_> = element.records.into_iter().map(|record| 
-                collect_data.insert(record.name, JsonValue::String(record.value))
-            ).collect();
+        let mut collect_data: Map<String, JsonValue> = Map::new();
+        let any_value: Vec<_> = element
+            .records
+            .into_iter()
+            .map(|record| collect_data.insert(record.name, JsonValue::String(record.value)))
+            .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
             data: to_value(any_value).expect("Failed to find by identifier"),
-            errors: None,  
-            schema: None,  
+            errors: None,
+            schema: None,
         };
 
         // Return the found element
@@ -194,22 +211,27 @@ pub fn find_by_identifier(response: &str, search_identifier: u64) -> Option<Enti
 }
 
 // Function that returns the first found element with identical name
-pub fn find_by_name(response: &str, search_name: &str) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
+pub fn find_by_name(
+    response: &str,
+    search_name: &str,
+) -> Option<EntityCollectionEntityIdDataDataIdGet200Response> {
     // Deserialization of the JSON array
     let json_array: Vec<JsonElement> = serde_json::from_str(response).ok()?;
 
     // Search for name in the JSON array
     if let Some(element) = json_array.into_iter().find(|e| e.name == search_name) {
         // Convert the found element into a EntityCollectionEntityIdDataDataIdGet200Response object
-        let mut collect_data:Map<String, JsonValue> = Map::new();
-        let any_value:Vec<_> = element.records.into_iter().map(|record| 
-                collect_data.insert(record.name, JsonValue::String(record.value))
-            ).collect();
+        let mut collect_data: Map<String, JsonValue> = Map::new();
+        let any_value: Vec<_> = element
+            .records
+            .into_iter()
+            .map(|record| collect_data.insert(record.name, JsonValue::String(record.value)))
+            .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
             data: to_value(any_value).expect("Failed to find by name"),
-            errors: None,  
-            schema: None, 
+            errors: None,
+            schema: None,
         };
 
         // Return the found element
@@ -220,15 +242,25 @@ pub fn find_by_name(response: &str, search_name: &str) -> Option<EntityCollectio
     }
 }
 
-pub fn create_entity_collection_response(json_data: &Vec<JsonValue>) -> Result<EntityCollectionEntityIdDataGroupsGetResponse, EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError> {
+pub fn create_entity_collection_response(
+    json_data: &Vec<JsonValue>,
+) -> Result<
+    EntityCollectionEntityIdDataGroupsGetResponse,
+    EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError,
+> {
     // Process the JSON elements
     let items: Vec<EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner> = json_data
         .iter()
         .filter_map(|json_value| serde_json::from_value(json_value.clone()).ok())
-        .map(|json_element: JsonElement| { // Here you add the type
+        .map(|json_element: JsonElement| {
+            // Here you add the type
             // Create the ID by concatenating identifier and name
-            let id = format!("{}-{}", json_element.identifier, json_element.name.replace(' ', "-"));
-            
+            let id = format!(
+                "{}-{}",
+                json_element.identifier,
+                json_element.name.replace(' ', "-")
+            );
+
             // Create a EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner object with the required fields
             EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner {
                 id,
@@ -246,27 +278,54 @@ pub fn create_entity_collection_response(json_data: &Vec<JsonValue>) -> Result<E
     Ok(EntityCollectionEntityIdDataGroupsGetResponse::TheRequestWasSuccessful(inline_response))
 }
 
-pub fn group_by_writability(json_data: &Vec<JsonValue>) -> Result<EntityCollectionEntityIdDataGroupsGetResponse, EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError> {
+pub fn group_by_writability(
+    json_data: &Vec<JsonValue>,
+) -> Result<
+    EntityCollectionEntityIdDataGroupsGetResponse,
+    EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError,
+> {
     // Group the JSON elements by isWritable
-    let mut grouped_data: HashMap<String, EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner> = HashMap::new();
+    let mut grouped_data: HashMap<
+        String,
+        EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner,
+    > = HashMap::new();
 
     for json_value in json_data {
         if let Ok(json_element) = serde_json::from_value::<JsonElement>(json_value.clone()) {
             let is_writable = json_element.is_writable;
-            let id = if is_writable { "writeable" } else { "nonWriteable" };
+            let id = if is_writable {
+                "writeable"
+            } else {
+                "nonWriteable"
+            };
 
             // Add the ValueGroup only if the ID does not already exist
-            grouped_data.entry(id.to_string()).or_insert_with(|| EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner::new(id.to_string(), "identData".to_string()));
+            grouped_data.entry(id.to_string()).or_insert_with(|| {
+                EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner::new(
+                    id.to_string(),
+                    "identData".to_string(),
+                )
+            });
         }
     }
 
-    let items: Vec<EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner> = grouped_data.into_values().collect();
+    let items: Vec<EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner> =
+        grouped_data.into_values().collect();
 
     // Create and return the EntityCollectionEntityIdDataGroupsGetResponse
-    Ok(EntityCollectionEntityIdDataGroupsGetResponse::TheRequestWasSuccessful(EntityCollectionEntityIdDataGroupsGet200Response::new(items)))
+    Ok(
+        EntityCollectionEntityIdDataGroupsGetResponse::TheRequestWasSuccessful(
+            EntityCollectionEntityIdDataGroupsGet200Response::new(items),
+        ),
+    )
 }
 
-pub fn prepare_data_response(json_data: &Vec<JsonValue>) -> Result<EntityCollectionEntityIdDataGetResponse, EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError> {
+pub fn prepare_data_response(
+    json_data: &Vec<JsonValue>,
+) -> Result<
+    EntityCollectionEntityIdDataGetResponse,
+    EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError,
+> {
     // Filter the JSON elements based on isWritable
     let writable_elements: Vec<_> = json_data
         .iter()
@@ -285,7 +344,10 @@ pub fn prepare_data_response(json_data: &Vec<JsonValue>) -> Result<EntityCollect
     let non_writable_group = create_group(non_writable_elements, "nonWriteable".to_string())?;
 
     // Concatenate the two groups
-    let items: Vec<EntityCollectionEntityIdDataGet200ResponseItemsInner> = writable_group.into_iter().chain(non_writable_group).collect();
+    let items: Vec<EntityCollectionEntityIdDataGet200ResponseItemsInner> = writable_group
+        .into_iter()
+        .chain(non_writable_group)
+        .collect();
 
     let inline_response = EntityCollectionEntityIdDataGet200Response::new(items);
 
@@ -296,12 +358,15 @@ pub fn prepare_data_response(json_data: &Vec<JsonValue>) -> Result<EntityCollect
 fn create_group(
     elements: Vec<JsonElement>,
     group_id: String,
-) -> Result<Vec<EntityCollectionEntityIdDataGet200ResponseItemsInner>, EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError> {
+) -> Result<
+    Vec<EntityCollectionEntityIdDataGet200ResponseItemsInner>,
+    EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError,
+> {
     Ok(elements
         .into_iter()
         .map(|json_element| {
             // Create the ID by concatenating identifier and name
-            let id: String =  json_element.identifier.to_string();
+            let id: String = json_element.identifier.to_string();
 
             // Create a ValueMetadata object with the required fields
             EntityCollectionEntityIdDataGet200ResponseItemsInner {
@@ -315,52 +380,72 @@ fn create_group(
         .collect())
 }
 
-/// Returns a process entity element for the given process name 
-/// 
+/// Returns a process entity element for the given process name
+///
 /// # Arguments
 ///
 /// * `process_name` - A string slice that holds the name of the process
 /// * `process_pid` - A string slice that holds the pid of the process
 /// * `base_uri` - A string slice that holds the base uri
-/// 
+///
 /// # Examples
 ///
-pub fn find_single_process(process_name: &str, process_pid: &str, base_uri: &str) -> Option<EntityCollectionGet200ResponseItemsInner> {
-    info!("Starting find_single_process with process_name: '{}' and base_uri: '{}'", process_name, base_uri);
+pub fn find_single_process(
+    process_name: &str,
+    process_pid: &str,
+    base_uri: &str,
+) -> Option<EntityCollectionGet200ResponseItemsInner> {
+    info!(
+        "Starting find_single_process with process_name: '{}' and base_uri: '{}'",
+        process_name, base_uri
+    );
 
     let system = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
-    
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+
     let mut processes: BTreeMap<u32, &sysinfo::Process> = BTreeMap::new();
     for process in system.processes_by_exact_name(process_name) {
         processes.insert(process.pid().as_u32(), process);
     }
 
     let first_entry = processes.first_entry().unwrap();
-    let mut process = first_entry.get();        
+    let mut process = first_entry.get();
     if !process_pid.is_empty() {
         let pid: u32 = process_pid.parse().unwrap();
         process = processes.get(&pid).unwrap();
-    } 
-    info!("Found process with process_name: '{}' and pid: '{}'", process_name, process.pid());
+    }
+    info!(
+        "Found process with process_name: '{}' and pid: '{}'",
+        process_name,
+        process.pid()
+    );
 
     let name = process_name.replace(" ", "-"); // Replace spaces with hyphens
     let pid_name = format!("{}-{}", name, process.pid());
     let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
 
-    info!("Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'", process.pid(), pid_name, href);
+    info!(
+        "Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'",
+        process.pid(),
+        pid_name,
+        href
+    );
 
-    let entity_ref = 
+    let entity_ref =
         EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
-    return Some(entity_ref) // Return the EntityReference immediately    
+    return Some(entity_ref); // Return the EntityReference immediately    
 }
 
-
 // Function to search and return processes
-pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityCollectionGet200ResponseItemsInner> {
+pub fn find_processes(
+    search_terms: Vec<&str>,
+    base_uri: &str,
+) -> Vec<EntityCollectionGet200ResponseItemsInner> {
     let system = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
-    
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+
     let all_processes = system.processes(); // Retrieve all running processes
     let mut response_body = Vec::new(); // Initialize an empty vector for EntityReferences
 
@@ -382,7 +467,11 @@ pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityColl
                     let pid = process.1.pid();
                     let pid_name = format!("{}-{}", name, pid);
                     let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
-                    let entity_ref = EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
+                    let entity_ref = EntityCollectionGet200ResponseItemsInner::new(
+                        pid_name.clone(),
+                        name.clone(),
+                        href,
+                    ); // Create EntityReference
                     response_body.push(entity_ref); // Add EntityReference to the response vector
                 }
             }
@@ -393,33 +482,47 @@ pub fn find_processes(search_terms: Vec<&str>, base_uri: &str) -> Vec<EntityColl
 }
 
 // Find an entity by name and return its reference
-pub fn find_entity_by_name(search_term: &str, base_uri: &str) -> Option<EntityCollectionGet200ResponseItemsInner> {
+pub fn find_entity_by_name(
+    search_term: &str,
+    base_uri: &str,
+) -> Option<EntityCollectionGet200ResponseItemsInner> {
     let system = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
     let all_processes = system.processes(); // Retrieve all running processes
-    for process in all_processes 
-    {
-        let cmd = process.1.cmd();  // Retrieve the command line of the process
+    for process in all_processes {
+        let cmd = process.1.cmd(); // Retrieve the command line of the process
         let name = if !cmd.is_empty() {
-          let name = Path::new(&cmd[0]).file_name().unwrap_or_default().to_string_lossy().to_string();
-          let name = if let Some(idx) = name.rfind('.') {
-            name[..idx].to_string()
+            let name = Path::new(&cmd[0])
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let name = if let Some(idx) = name.rfind('.') {
+                name[..idx].to_string()
             } else {
                 name
             };
             let processed_name = name.replace(" ", "-");
             processed_name
         } else {
-                "".to_string()
+            "".to_string()
         };
 
         let name_with_pid = format!("{}-{}", name, process.1.pid()); // Extend name with PID
 
         // Check if the process is not in an idle state, the name is not empty, and contains the search term
-        if process.1.status() != ProcessStatus::Idle && !name.is_empty() && name_with_pid.contains(search_term) {
+        if process.1.status() != ProcessStatus::Idle
+            && !name.is_empty()
+            && name_with_pid.contains(search_term)
+        {
             let pid = process.1.pid();
             let href = format!("{}/apps/{}", base_uri, name_with_pid); // Construct the resource URI
-            return Some(EntityCollectionGet200ResponseItemsInner::new(pid.to_string(), name.clone(), href)); // Return entity reference
+            return Some(EntityCollectionGet200ResponseItemsInner::new(
+                pid.to_string(),
+                name.clone(),
+                href,
+            )); // Return entity reference
         }
     }
     None // Return None if no matching entity is found
@@ -437,23 +540,25 @@ pub fn extract_name_and_replace_dashes(input_string: &str, pid: &str) -> String 
 
 // Get the last part of a string after the last dash
 pub fn get_first_part_after_dash(entity_id: &str) -> String {
-    if let Some(last_dash_index) = entity_id.rfind('-') { // Find the index of the last dash
+    if let Some(last_dash_index) = entity_id.rfind('-') {
+        // Find the index of the last dash
         return entity_id[..(last_dash_index)].to_string(); // Return the substring before the last dash
     }
     entity_id.to_string() // Return the original string if no dash is found
 }
 
-
 // Get the last part of a string after the last dash
 pub fn get_last_part_after_dash(entity_id: &str) -> String {
-    if let Some(last_dash_index) = entity_id.rfind('-') { // Find the index of the last dash
+    if let Some(last_dash_index) = entity_id.rfind('-') {
+        // Find the index of the last dash
         return entity_id[(last_dash_index + 1)..].to_string(); // Return the substring after the last dash
     }
     entity_id.to_string() // Return the original string if no dash is found
 }
 
 pub fn get_before_last_dash(entity_id: &str) -> String {
-    if let Some(last_dash_index) = entity_id.rfind('-') { // Find the index of the last dash
+    if let Some(last_dash_index) = entity_id.rfind('-') {
+        // Find the index of the last dash
         return entity_id[..last_dash_index].to_string(); // Return the substring before the last dash
     }
     entity_id.to_string() // Return the original string if no dash is found
@@ -461,7 +566,7 @@ pub fn get_before_last_dash(entity_id: &str) -> String {
 use std::thread;
 pub fn get_cpu_usage(pid_str: &str) -> Option<f32> {
     let mut system = System::new_all();
-    
+
     // Versuchen, die PID in den Pid-Typ umzuwandeln
     let pid: Pid = match Pid::from_str(pid_str) {
         Ok(p) => p,
@@ -473,7 +578,7 @@ pub fn get_cpu_usage(pid_str: &str) -> Option<f32> {
 
     // Initial update of the system information
     system.refresh_all();
-    
+
     // Wait and refresh system information again
     thread::sleep(Duration::from_secs(1));
     system.refresh_all();
@@ -499,8 +604,9 @@ pub fn disk_total_space() {
 
 pub fn get_process_filesize(pid: u32) -> Option<u64> {
     let system = System::new_with_specifics(
-    RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
-   
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+
     let process = system.process(Pid::from_u32(pid)).unwrap();
     let final_size = process.memory();
 
@@ -526,7 +632,10 @@ pub fn get_executable_size(pid: u32) -> Option<u64> {
             }
         }
         Err(err) => {
-            error!("Error reading symbolic link to the executable file: {}", err);
+            error!(
+                "Error reading symbolic link to the executable file: {}",
+                err
+            );
             None
         }
     }
@@ -539,7 +648,6 @@ pub fn get_disk_usage_for_pid(pid: i32) -> Option<u64> {
     if let Ok(entries) = fs::read_dir(proc_fd_path) {
         for entry in entries {
             if let Ok(entry) = entry {
-
                 if let Ok(metadata) = entry.metadata() {
                     // Nur reguläre Dateien berücksichtigen
                     if metadata.is_file() {
@@ -547,14 +655,14 @@ pub fn get_disk_usage_for_pid(pid: i32) -> Option<u64> {
                     }
                 }
             }
-        }info!("get_disk_usage_for_pid {}", disk_usage);
+        }
+        info!("get_disk_usage_for_pid {}", disk_usage);
         Some(disk_usage)
     } else {
         info!("NONE {}", disk_usage);
         None
     }
 }
-
 
 pub fn get_disk_info() -> serde_json::Result<String> {
     // Create an empty vector structure to collect memory information
@@ -570,7 +678,7 @@ pub fn get_disk_info() -> serde_json::Result<String> {
             pid: None,
             total_space_in_kilobyte: disk.total_space() / 1000,
             available_space_in_kilobyte: disk.available_space() / 1000,
-            used_space: None
+            used_space: None,
         };
 
         // Add the storage information to the vector structure
@@ -584,12 +692,12 @@ pub fn get_disk_info() -> serde_json::Result<String> {
     Ok(json_output)
 }
 
-pub fn  get_memory_usage (pid: &str) -> Option<u64> {
+pub fn get_memory_usage(pid: &str) -> Option<u64> {
     let s = System::new_all();
 
     if let Ok(pid_int) = pid.parse::<u32>() {
         if let Some(process) = s.process(Pid::from_u32(pid_int)) {
-            Some(process.memory()/1000)
+            Some(process.memory() / 1000)
         } else {
             None
         }
@@ -598,7 +706,7 @@ pub fn  get_memory_usage (pid: &str) -> Option<u64> {
     }
 }
 
-pub fn get_disk_io(pid: &str) -> Option<(u64, u64)>{
+pub fn get_disk_io(pid: &str) -> Option<(u64, u64)> {
     let s = System::new_all();
 
     if let Ok(pid_int) = pid.parse::<u32>() {
@@ -608,27 +716,44 @@ pub fn get_disk_io(pid: &str) -> Option<(u64, u64)>{
             let read_bytes_total = disk_usage.total_read_bytes;
             let write_bytes = disk_usage.written_bytes;
             let write_byte_total = disk_usage.total_written_bytes;
-            info!("Read {}, Total read {}", read_bytes/1000, read_bytes_total/1000);
-            info!("Write {}, Total written {}", write_bytes/1000, write_byte_total/1000);
-            Some((read_bytes_total/1000, write_byte_total/1000))
+            info!(
+                "Read {}, Total read {}",
+                read_bytes / 1000,
+                read_bytes_total / 1000
+            );
+            info!(
+                "Write {}, Total written {}",
+                write_bytes / 1000,
+                write_byte_total / 1000
+            );
+            Some((read_bytes_total / 1000, write_byte_total / 1000))
         } else {
             None
         }
     } else {
         None
     }
-
 }
 
-
-pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, id: &str) -> EntityCollectionEntityIdDataDataIdGetResponse {
+pub fn handle_app_resource(
+    resource: &str,
+    pid_to_monitor: &str,
+    entity: &str,
+    id: &str,
+) -> EntityCollectionEntityIdDataDataIdGetResponse {
     match resource {
         "cpu" => {
             if let Some(cpu_usage) = get_cpu_usage(pid_to_monitor) {
                 let mut response_data = BTreeMap::new();
                 response_data.insert("name".to_string(), JsonValue::String("CPU".to_string()));
-                response_data.insert("description".to_string(), JsonValue::String(format!("CPU usage for {}", entity)));
-                response_data.insert("cpu_usage".to_string(), JsonValue::String(format!("{:.2}%", cpu_usage)));
+                response_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("CPU usage for {}", entity)),
+                );
+                response_data.insert(
+                    "cpu_usage".to_string(),
+                    JsonValue::String(format!("{:.2}%", cpu_usage)),
+                );
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                     id: id.to_string(),
@@ -638,33 +763,34 @@ pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, i
                 };
 
                 EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
-                
             } else {
                 let error = AnyPathDocsGetDefaultResponse {
                     error_code: "UnknownResource".to_string(),
                     message: "Unknown resource.".to_string(),
                     vendor_code: None,
                     translation_id: None,
-                    parameters: None
+                    parameters: None,
                 };
                 EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
             }
         }
         "memory" => {
-
             if let Some(memory_usage) = get_memory_usage(pid_to_monitor) {
                 let mut response_data = BTreeMap::new();
                 response_data.insert("name".to_string(), JsonValue::String("Memory".to_string()));
-                response_data.insert("description".to_string(), JsonValue::String(format!("Memory usage for {}", entity)));
+                response_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("Memory usage for {}", entity)),
+                );
                 response_data.insert("memory_usage_kb".to_string(), memory_usage.into());
 
                 if let Some((total_memory_mb, used_memory_mb)) = get_system_memory_usage() {
                     let total_memory_as_json_number = JsonValue::Number(total_memory_mb.into());
                     let used_memory_as_json_number = JsonValue::Number(used_memory_mb.into());
-                    
-                    response_data.insert("total_memory_mb".to_string(), total_memory_as_json_number);
+
+                    response_data
+                        .insert("total_memory_mb".to_string(), total_memory_as_json_number);
                     response_data.insert("used_memory_mb".to_string(), used_memory_as_json_number);
-                    
                 }
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
@@ -681,22 +807,27 @@ pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, i
                     message: "Unknown resource.".to_string(),
                     vendor_code: None,
                     translation_id: None,
-                    parameters: None
+                    parameters: None,
                 };
                 EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
             }
         }
         "disk" => {
-            if let Some(disk_io) = get_executable_size(pid_to_monitor.parse::<u32>().unwrap()) 
-            {
+            if let Some(disk_io) = get_executable_size(pid_to_monitor.parse::<u32>().unwrap()) {
                 info!("disk {}", disk_io);
                 let disks = Disks::new_with_refreshed_list();
                 let disk_space_available = disks.get(0).unwrap().available_space();
                 let total_disk_space = disks.get(0).unwrap().total_space();
                 let mut response_data = BTreeMap::new();
-                response_data.insert("description".to_string(), JsonValue::String(format!("Disk usage for {}", entity)));
+                response_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("Disk usage for {}", entity)),
+                );
                 response_data.insert("application_size_byte".to_string(), disk_io.into());
-                response_data.insert("disk_space_available_byte".to_string(), disk_space_available.into());
+                response_data.insert(
+                    "disk_space_available_byte".to_string(),
+                    disk_space_available.into(),
+                );
                 response_data.insert("total_disk_space_byte".to_string(), total_disk_space.into());
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
@@ -712,7 +843,7 @@ pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, i
                     message: "Unknown resource.".to_string(),
                     vendor_code: None,
                     translation_id: None,
-                    parameters: None
+                    parameters: None,
                 };
                 EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
             }
@@ -721,49 +852,68 @@ pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, i
             // Behandlung für alle anderen Fälle (all)
             let mut response_data = BTreeMap::new();
             response_data.insert("name".to_string(), JsonValue::String(entity.to_string()));
-            response_data.insert("description".to_string(), JsonValue::String("App system resources monitoring for CPU-, Memory usage and Disk usage".to_string()));
-            
+            response_data.insert(
+                "description".to_string(),
+                JsonValue::String(
+                    "App system resources monitoring for CPU-, Memory usage and Disk usage"
+                        .to_string(),
+                ),
+            );
+
             let mut resources = Map::new();
-            
-            if let Some(disk_io) = get_executable_size(pid_to_monitor.parse::<u32>().unwrap())
-             {
+
+            if let Some(disk_io) = get_executable_size(pid_to_monitor.parse::<u32>().unwrap()) {
                 let mut disk_data = Map::new();
                 let disks = Disks::new_with_refreshed_list();
                 let disk_space_available = disks.get(0).unwrap().available_space();
                 let total_disk_space = disks.get(0).unwrap().total_space();
-                disk_data.insert("description".to_string(), JsonValue::String(format!("Disk usage {}", entity)));
+                disk_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("Disk usage {}", entity)),
+                );
                 disk_data.insert("application_size_byte".to_string(), disk_io.into());
-                disk_data.insert("disk_space_available_byte".to_string(), disk_space_available.into());
+                disk_data.insert(
+                    "disk_space_available_byte".to_string(),
+                    disk_space_available.into(),
+                );
                 disk_data.insert("total_disk_space_byte".to_string(), total_disk_space.into());
                 resources.insert("disk".to_string(), JsonValue::Object(disk_data));
             }
-            
+
             if let Some(cpu_usage) = get_cpu_usage(pid_to_monitor) {
                 let mut cpu_data = Map::new();
-                cpu_data.insert("description".to_string(), JsonValue::String(format!("CPU usage for {}", entity)));
-                cpu_data.insert("cpu_usage".to_string(), JsonValue::String(format!("{:.2}%", cpu_usage)));
+                cpu_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("CPU usage for {}", entity)),
+                );
+                cpu_data.insert(
+                    "cpu_usage".to_string(),
+                    JsonValue::String(format!("{:.2}%", cpu_usage)),
+                );
                 resources.insert("cpu".to_string(), JsonValue::Object(cpu_data));
             }
-            
+
             if let Some(memory_usage) = get_memory_usage(pid_to_monitor) {
                 let mut memory_data = Map::new();
-                memory_data.insert("description".to_string(), JsonValue::String(format!("Memory usage for {}", entity)));
+                memory_data.insert(
+                    "description".to_string(),
+                    JsonValue::String(format!("Memory usage for {}", entity)),
+                );
                 memory_data.insert("memory_usage_kb".to_string(), memory_usage.into());
 
                 if let Some((total_memory_mb, used_memory_mb)) = get_system_memory_usage() {
                     let total_memory_as_json_number = JsonValue::Number(total_memory_mb.into());
                     let used_memory_as_json_number = JsonValue::Number(used_memory_mb.into());
-                    
+
                     memory_data.insert("total_memory_mb".to_string(), total_memory_as_json_number);
                     memory_data.insert("used_memory_mb".to_string(), used_memory_as_json_number);
-                    
                 }
 
                 resources.insert("memory".to_string(), JsonValue::Object(memory_data));
             }
-            
+
             response_data.insert("resources".to_string(), JsonValue::Object(resources));
-            
+
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: id.to_string(),
                 data: to_value(response_data).expect("Failed to serialize disk usage"),
@@ -779,19 +929,16 @@ pub fn handle_app_resource(resource: &str, pid_to_monitor: &str, entity: &str, i
                 message: "Unknown resource.".to_string(),
                 vendor_code: None,
                 translation_id: None,
-                parameters: None
+                parameters: None,
             };
             EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
         }
     }
 }
 
-
-pub fn get_system_cpu_usage () -> Option<f32> {
-
-    let mut s = System::new_with_specifics(
-        RefreshKind::new().with_cpu(CpuRefreshKind::everything()),
-    );
+pub fn get_system_cpu_usage() -> Option<f32> {
+    let mut s =
+        System::new_with_specifics(RefreshKind::new().with_cpu(CpuRefreshKind::everything()));
 
     // Wait a bit because CPU usage is based on diff.
     std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
@@ -800,15 +947,18 @@ pub fn get_system_cpu_usage () -> Option<f32> {
 
     let mut cpu_usage_sum: f32 = 0.0;
     let num_cores = s.physical_core_count().unwrap_or_default() as f32;
-    
+
     for cpu in s.cpus() {
         cpu_usage_sum += cpu.cpu_usage();
-        info!("cpu.cpu_usage(): {} num cores: {}", cpu.cpu_usage(), num_cores);
-    };
+        info!(
+            "cpu.cpu_usage(): {} num cores: {}",
+            cpu.cpu_usage(),
+            num_cores
+        );
+    }
     info!("cpu_usage_sum: {} num cores: {}", cpu_usage_sum, num_cores);
     Some(cpu_usage_sum / num_cores)
 }
-
 
 pub fn get_system_memory_usage() -> Option<(u64, u64)> {
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
@@ -841,23 +991,25 @@ pub fn get_system_memory_usage() -> Option<(u64, u64)> {
     None
 }
 
-
 pub fn get_system_disk_io() -> Vec<(String, i32, u64, u64)> {
     let mut result = Vec::new();
     let s = System::new_all();
 
     for (_pid, process) in s.processes() {
-        let disk_usage = process.disk_usage(); 
+        let disk_usage = process.disk_usage();
         let name = process.name().to_string();
         let pid_value = process.pid().to_string().parse::<i32>().unwrap();
         let read_bytes = disk_usage.read_bytes;
         let written_bytes = disk_usage.written_bytes;
         result.push((name, pid_value, read_bytes, written_bytes));
-        
     }
     result
 }
-pub fn handle_system_resource(resource: &str, entity: &str, id: &str) -> EntityCollectionEntityIdDataDataIdGetResponse {
+pub fn handle_system_resource(
+    resource: &str,
+    entity: &str,
+    id: &str,
+) -> EntityCollectionEntityIdDataDataIdGetResponse {
     match resource {
         "cpu" => handle_cpu_resource(id),
         "memory" => handle_memory_resource(id),
@@ -870,7 +1022,7 @@ pub fn handle_system_resource(resource: &str, entity: &str, id: &str) -> EntityC
                 message: "Unknown resource.".to_string(),
                 vendor_code: None,
                 translation_id: None,
-                parameters: None
+                parameters: None,
             };
             EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
         }
@@ -881,10 +1033,19 @@ pub fn handle_cpu_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRes
     if let Some(cpu_usage) = get_system_cpu_usage() {
         let cpu_usage_formatted = format!("{:.2}%", cpu_usage); // Format CPU usage as a percentage
         let mut response_data = BTreeMap::new();
-        response_data.insert("cpu_usage".to_string(), JsonValue::String(cpu_usage_formatted));
-        response_data.insert("description".to_string(), JsonValue::String(format!("CPU usage for component {}",get_first_part_after_dash(&id))));
+        response_data.insert(
+            "cpu_usage".to_string(),
+            JsonValue::String(cpu_usage_formatted),
+        );
+        response_data.insert(
+            "description".to_string(),
+            JsonValue::String(format!(
+                "CPU usage for component {}",
+                get_first_part_after_dash(&id)
+            )),
+        );
         response_data.insert("name".to_string(), JsonValue::String("CPU".to_string()));
-        
+
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: id.to_string(),
             data: to_value(response_data).expect("Failed to serialize handle cpu usage"),
@@ -899,7 +1060,7 @@ pub fn handle_cpu_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRes
             message: "Unknown resource.".to_string(),
             vendor_code: None,
             translation_id: None,
-            parameters: None
+            parameters: None,
         };
         EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
     }
@@ -908,7 +1069,7 @@ fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResp
     if let Some((total_memory_mb, used_memory_mb)) = get_system_memory_usage() {
         let total_memory_as_json_number = JsonValue::Number(total_memory_mb.into());
         let used_memory_as_json_number = JsonValue::Number(used_memory_mb.into());
-        
+
         let mut response_data = BTreeMap::new();
         response_data.insert("total_memory_mb".to_string(), total_memory_as_json_number);
         response_data.insert("used_memory_mb".to_string(), used_memory_as_json_number);
@@ -919,7 +1080,7 @@ fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResp
             errors: None,
             schema: None,
         };
-        
+
         EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
     } else {
         let error = AnyPathDocsGetDefaultResponse {
@@ -927,7 +1088,7 @@ fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResp
             message: "Unknown resource.".to_string(),
             vendor_code: None,
             translation_id: None,
-            parameters: None
+            parameters: None,
         };
         EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
     }
@@ -939,7 +1100,10 @@ pub fn handle_disk_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRe
     let disk_space_available = disks.get(0).unwrap().available_space();
     let total_disk_space = disks.get(0).unwrap().total_space();
 
-    resources.insert(("disk_space_available_bytes").into(), disk_space_available.into());
+    resources.insert(
+        ("disk_space_available_bytes").into(),
+        disk_space_available.into(),
+    );
     resources.insert(("total_disk_space_bytes").into(), total_disk_space.into());
 
     let response_data = json!({
@@ -957,27 +1121,44 @@ pub fn handle_disk_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRe
     EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
 }
 
-fn handle_all_system_resources(id: &str, entity: &str) -> EntityCollectionEntityIdDataDataIdGetResponse {
+fn handle_all_system_resources(
+    id: &str,
+    entity: &str,
+) -> EntityCollectionEntityIdDataDataIdGetResponse {
     let mut response_data = Map::new();
     response_data.insert("name".to_string(), JsonValue::String(entity.to_string()));
-    response_data.insert("description".to_string(), JsonValue::String("App system resources monitoring for CPU-, Memory usage and Disk I/O".to_string()));
-    
+    response_data.insert(
+        "description".to_string(),
+        JsonValue::String(
+            "App system resources monitoring for CPU-, Memory usage and Disk I/O".to_string(),
+        ),
+    );
+
     let mut resources = Map::new();
-    
+
     let mut disk_io_entries = Map::new();
     let disk_io_data = get_system_disk_io();
     for (name, pid, read_speed_b_s, write_speed_b_s) in disk_io_data {
         let description = format!("Disk I/O for {}", name);
         let mut disk_entry = Map::new();
-        disk_entry.insert("description".to_string(), JsonValue::String(description.clone()));
+        disk_entry.insert(
+            "description".to_string(),
+            JsonValue::String(description.clone()),
+        );
         disk_entry.insert("name".to_string(), JsonValue::String(name.clone()));
         disk_entry.insert("pid".to_string(), JsonValue::Number(pid.into()));
-        disk_entry.insert("read_speed_b_s".to_string(), JsonValue::Number(read_speed_b_s.into()));
-        disk_entry.insert("write_speed_b_s".to_string(), JsonValue::Number(write_speed_b_s.into()));
+        disk_entry.insert(
+            "read_speed_b_s".to_string(),
+            JsonValue::Number(read_speed_b_s.into()),
+        );
+        disk_entry.insert(
+            "write_speed_b_s".to_string(),
+            JsonValue::Number(write_speed_b_s.into()),
+        );
         disk_io_entries.insert(name.clone(), JsonValue::Object(disk_entry));
     }
     resources.insert("disk".to_string(), JsonValue::Object(disk_io_entries));
-    
+
     if let Some(cpu_usage) = get_system_cpu_usage() {
         let cpu_usage_as_u64 = cpu_usage as u64;
         let cpu_usage_as_json_number = JsonValue::Number(cpu_usage_as_u64.into());
@@ -985,25 +1166,40 @@ fn handle_all_system_resources(id: &str, entity: &str) -> EntityCollectionEntity
         let mut cpu_usage_data = Map::new();
         let cpu_usage_formatted = format!("{:.2}%", cpu_usage_as_json_number); // Format CPU usage as a percentage
 
-        cpu_usage_data.insert("cpu_usage".to_string(), JsonValue::String(cpu_usage_formatted));
-        cpu_usage_data.insert("description".to_string(), JsonValue::String(format!("CPU usage for component {}",get_first_part_after_dash(&id))));
+        cpu_usage_data.insert(
+            "cpu_usage".to_string(),
+            JsonValue::String(cpu_usage_formatted),
+        );
+        cpu_usage_data.insert(
+            "description".to_string(),
+            JsonValue::String(format!(
+                "CPU usage for component {}",
+                get_first_part_after_dash(&id)
+            )),
+        );
         cpu_usage_data.insert("name".to_string(), JsonValue::String("CPU".to_string()));
 
         resources.insert("cpu".to_string(), JsonValue::Object(cpu_usage_data));
     }
-    
+
     if let Some((total_memory_kb, used_memory_kb)) = get_system_memory_usage() {
         let total_memory_as_json_number = JsonValue::Number(total_memory_kb.into());
         let used_memory_as_json_number = JsonValue::Number(used_memory_kb.into());
-        
+
         let mut memory_usage_data = Map::new();
-        memory_usage_data.insert("description".to_string(), JsonValue::String(format!("CPU usage for component {}",get_first_part_after_dash(&id))));
+        memory_usage_data.insert(
+            "description".to_string(),
+            JsonValue::String(format!(
+                "CPU usage for component {}",
+                get_first_part_after_dash(&id)
+            )),
+        );
         memory_usage_data.insert("total_memory_mb".to_string(), total_memory_as_json_number);
         memory_usage_data.insert("used_memory_mb".to_string(), used_memory_as_json_number);
-        
+
         resources.insert("memory".to_string(), JsonValue::Object(memory_usage_data));
     }
-    
+
     response_data.insert("resources".to_string(), JsonValue::Object(resources));
 
     let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
@@ -1012,7 +1208,7 @@ fn handle_all_system_resources(id: &str, entity: &str) -> EntityCollectionEntity
         errors: None,
         schema: None,
     };
-    
+
     EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
 }
 
@@ -1048,7 +1244,6 @@ pub async fn gateway_request(
             // Extract body content
             let request_body = body.unwrap_or_else(Body::empty);
 
-
             let body_bytes = hyper::body::to_bytes(request_body).await?;
             let size = body_bytes.len();
 
@@ -1076,12 +1271,12 @@ pub async fn gateway_request(
     Ok(response)
 }
 
-
-
-
 use std::net::ToSocketAddrs;
 pub async fn is_host_available(host: &str, port: u16) -> bool {
-    if let Ok(_) = TcpStream::connect_timeout(&(&host[..], port).to_socket_addrs().unwrap().next().unwrap(), Duration::from_secs(5)) {
+    if let Ok(_) = TcpStream::connect_timeout(
+        &(&host[..], port).to_socket_addrs().unwrap().next().unwrap(),
+        Duration::from_secs(5),
+    ) {
         info!("Verbindung zu {}:{} erfolgreich.", host, port);
         true // Connection successful -> Port available
     } else {
@@ -1111,14 +1306,18 @@ pub fn update_href_with_base_uri(json_value: &mut Value, base_uri: &str) {
     }
 }
 
-
-pub fn extract_response_data(response: EntityCollectionEntityIdGet200Response) -> HashMap<String, Option<String>> {
+pub fn extract_response_data(
+    response: EntityCollectionEntityIdGet200Response,
+) -> HashMap<String, Option<String>> {
     let mut data = HashMap::new();
 
     data.insert("id".to_string(), Some(response.id));
     data.insert("name".to_string(), Some(response.name));
     data.insert("translation_id".to_string(), response.translation_id);
-    data.insert("variant".to_string(), response.variant.map(|v| format!("{:?}", v)));
+    data.insert(
+        "variant".to_string(),
+        response.variant.map(|v| format!("{:?}", v)),
+    );
     data.insert("configurations".to_string(), response.configurations);
     data.insert("bulk_data".to_string(), response.bulk_data);
     data.insert("data".to_string(), response.data);
@@ -1137,7 +1336,9 @@ pub fn extract_response_data(response: EntityCollectionEntityIdGet200Response) -
     data
 }
 
-pub fn extract_response_data_from_json(json_value: &mut JsonValue) -> HashMap<String, Option<String>> {
+pub fn extract_response_data_from_json(
+    json_value: &mut JsonValue,
+) -> HashMap<String, Option<String>> {
     let mut data = HashMap::new();
 
     if let JsonValue::Object(obj) = json_value {
@@ -1154,7 +1355,10 @@ pub fn extract_response_data_from_json(json_value: &mut JsonValue) -> HashMap<St
     data
 }
 
-pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_uri: &str) -> EntityCollectionEntityIdGetResponse {
+pub fn extract_response_data_from_json_to_response(
+    json_value: &mut Value,
+    base_uri: &str,
+) -> EntityCollectionEntityIdGetResponse {
     // Check if it is an object
     if let Some(object) = json_value.as_object() {
         // Extract the values from the JSON object
@@ -1164,20 +1368,26 @@ pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_
         // Check if the required fields are present
         if let (Some(id), Some(name)) = (id, name) {
             // Create an InlineResponse2002 instance with the available fields
-            let mut response = EntityCollectionEntityIdGet200Response::new(id.to_string(), name.to_string());
+            let mut response =
+                EntityCollectionEntityIdGet200Response::new(id.to_string(), name.to_string());
 
             // Iterate over the fields in the JSON object and add them to the response if they contain values
             for (field_name, field_value) in object.iter() {
                 if let Some(field_value_str) = field_value.as_str() {
                     // Format the value using the base URI and the corresponding path
                     let formatted_value = match field_name.as_str() {
-                        _ => format!("{}/apps/{}/{}", base_uri, id, match field_name.as_str() {
-                            "data" => "data",
-                            "configurations" => "configuration",
-                            "bulk_data" => "bulk-data",
-                            // add other fields here
-                            _ => "",
-                        })
+                        _ => format!(
+                            "{}/apps/{}/{}",
+                            base_uri,
+                            id,
+                            match field_name.as_str() {
+                                "data" => "data",
+                                "configurations" => "configuration",
+                                "bulk_data" => "bulk-data",
+                                // add other fields here
+                                _ => "",
+                            }
+                        ),
                     };
 
                     // Add the field to the response if the value is not empty
@@ -1197,7 +1407,7 @@ pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_
             if response.data.is_some()
                 || response.configurations.is_some()
                 || response.bulk_data.is_some()
-                // Add more fields here
+            // Add more fields here
             {
                 // Return of the created EntityCollectionEntityIdGetResponse
                 EntityCollectionEntityIdGetResponse::TheResponseBodyContainsAPropertyForEachSupportedResourceAndRelatedCollection(response)
@@ -1208,7 +1418,7 @@ pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_
                     message: "Entity not found.".to_string(),
                     vendor_code: None,
                     translation_id: None,
-                    parameters: None
+                    parameters: None,
                 };
                 EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
             }
@@ -1219,7 +1429,7 @@ pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_
                 message: "Entity not found.".to_string(),
                 vendor_code: None,
                 translation_id: None,
-                parameters: None
+                parameters: None,
             };
             EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
         }
@@ -1230,18 +1440,15 @@ pub fn extract_response_data_from_json_to_response(json_value: &mut Value, base_
             message: "Entity not found.".to_string(),
             vendor_code: None,
             translation_id: None,
-            parameters: None
+            parameters: None,
         };
         EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
     }
 }
 
 pub fn resolve_hostname(hostname: &str) -> Result<String, std::io::Error> {
-    let addr = (hostname, 0)
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Hostname resolution failed"))?;
+    let addr = (hostname, 0).to_socket_addrs()?.next().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "Hostname resolution failed")
+    })?;
     Ok(addr.ip().to_string())
 }
-
-
