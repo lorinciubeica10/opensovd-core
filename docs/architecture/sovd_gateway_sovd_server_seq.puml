@@ -1,0 +1,82 @@
+@startuml
+title SOVD Gateway
+
+actor "SOVD Offboard Client" as Client
+participant "SOVD Gateway" as Gateway
+participant "mDNS Responder" as MDNS
+participant "SOVD Server" as A
+participant "Classic Diagnostics Adapter" as B
+
+== Service Discovery Phase ==
+
+A -> MDNS: Advertise _sovd._tcp.local (port=7690)
+B -> MDNS: Advertise _sovd._tcp.local (port=7690)
+
+note right of Gateway
+mDNS TXT Record:
+ecu_id={entity}
+path=/{entity-path}
+version=v1
+end note
+
+MDNS -> Gateway: Notify(ServiceUp, A@7690)
+note right of Gateway
+#[derive(Debug, Clone)]
+pub struct UpstreamInfo {
+    pub instance_name: String,               // e.g. "{entity}._sovd._tcp.local"
+    pub hostname: String,                    // e.g. "entity.com"
+    pub address: Option<IpAddr>,             // resolved IP
+    pub port: u16,                           // e.g. 7690
+    pub path_prefix: String,                 // e.g. "/{entity}/"
+}
+end note
+
+Gateway -> A: HTTP GET /{entity-path}/version-info
+A --> Gateway: 200 OK {version: "1.0.0"}
+Gateway -> Gateway: Update A(version="1.0.0") to active UpstreamInfo list
+
+MDNS -> Gateway: Notify(ServiceUp, B@7690)
+Gateway -> B: HTTP GET /version-info
+B --> Gateway: 200 OK {version: "1.0.0"}
+Gateway -> Gateway: Add B(version="1.0.0") to active upstream list
+
+note right of Gateway
+Active upstream list:
+SOVD Server@7690 (v1.0.0)
+CDA@7690 (v1.0.0)
+end note
+
+== Normal Operation ==
+
+Client -> Gateway: GET /v1/chassis/api/data
+Gateway -> A: Forward request (X-Forwarded-*)
+A --> Gateway: 200 OK (hrefs, modfied with Forward-Host)
+Gateway --> Client: 200 OK
+
+== Upstream Down ==
+
+A -> MDNS: Send "Goodbye" (TTL=0)
+MDNS -> Gateway: Notify(ServiceDown, A@7690)
+Gateway -> Gateway: Remove SOVD Server from active list
+
+note right of Gateway
+Active upstream list:
+B@7690 (v1.0.0)
+end note
+
+== New Upstream Appears ==
+
+participant "SOVD Server" as C
+C -> MDNS: Advertise _sovd._tcp.local (port=8082)
+MDNS -> Gateway: Notify(ServiceUp, C@8082)
+Gateway -> C: HTTP GET /version-info
+C --> Gateway: 200 OK {version: "1.0.0"}
+Gateway -> Gateway: Update C(version="1.0.0") to active UpstreamInfo list
+
+note right of Gateway
+Active upstream list:
+CDA@7690 (v1.0.0)
+SOVD Server@7690 (v1.0.0)
+end note
+
+@enduml
