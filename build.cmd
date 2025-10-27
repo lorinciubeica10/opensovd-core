@@ -72,14 +72,14 @@ exit /b 1
   :: Show openapi generator version / check, if openapi generator needs to be 
   :: downloaded
   echo|set /p="OpenAPI Generator Version "
-  java -jar %GENERATOR_JAR% version
+  java -jar "%GENERATOR_JAR%" version
   if errorlevel 1 (
     call :get_generator
     if errorlevel 1 (
       exit /b 1
     )
   )
-  java -jar %GENERATOR_JAR% generate -i %SPEC_FILE% -g rust-axum -o %OUT_DIR% --additional-properties=packageName=sovd-api
+  java -jar "%GENERATOR_JAR%" generate -i "%SPEC_FILE%" -g rust-axum -o "%OUT_DIR%" --additional-properties=packageName=sovd-api
   if errorlevel 1 (
     exit /b 1
   )
@@ -87,22 +87,22 @@ exit /b 1
   :: Patch generated code
   :: It seems, that openapi generator isn't generating  validator implementation 
   :: for self defined byte array type
-  echo. >> %OUT_DIR%\src\types.rs
-  echo impl validator::Validate for ByteArray { >> %OUT_DIR%\src\types.rs
-  echo     fn validate(^&self) -^> std::result::Result^<(), validator::ValidationErrors^> { >> %OUT_DIR%\src\types.rs
-  echo         Ok(()) >> %OUT_DIR%\src\types.rs
-  echo     } >> %OUT_DIR%\src\types.rs
-  echo } >> %OUT_DIR%\src\types.rs
+  echo. >> "%OUT_DIR%\src\types.rs"
+  echo impl validator::Validate for ByteArray { >> "%OUT_DIR%\src\types.rs"
+  echo     fn validate(^&self) -^> std::result::Result^<(), validator::ValidationErrors^> { >> "%OUT_DIR%\src\types.rs"
+  echo         Ok(()) >> "%OUT_DIR%\src\types.rs"
+  echo     } >> "%OUT_DIR%\src\types.rs"
+  echo } >> "%OUT_DIR%\src\types.rs"
   :: Fix http return code in generated server code in some error cases
-  %SED_EXE% -i 's/response.status(0)/response.status(200)/g' %OUT_DIR%\src\server\mod.rs
+  "%SED_EXE%" -i 's/response.status(0)/response.status(200)/g' "%OUT_DIR%\src\server\mod.rs"
   exit /b 0
 
 :get_generator
-  if not exist %GENERATOR_DIR% (
-    mkdir %GENERATOR_DIR%
+  if not exist "%GENERATOR_DIR%" (
+    mkdir "%GENERATOR_DIR%"
   )
   echo Downloading OpenAPI generator version %GENERATOR_VERSION%...
-  curl %GENERATOR_URL% -o %GENERATOR_JAR%
+  curl "%GENERATOR_URL%" -o "%GENERATOR_JAR%"
   if errorlevel 1 (
     echo Error: Failed to download OpenAPI Generator CLI.
     exit /b 1
@@ -126,14 +126,14 @@ exit /b 1
   :: Show openapi generator version / check, if openapi generator needs to be 
   :: downloaded
   echo|set /p="OpenAPI Generator Version "
-  java -jar %GENERATOR_JAR% version
+  java -jar "%GENERATOR_JAR%" version
   if errorlevel 1 (
     call :get_generator
     if errorlevel 1 (
       exit /b 1
     )
   )
-  java -jar %GENERATOR_JAR% validate -i %SPEC_FILE%
+  java -jar "%GENERATOR_JAR%" validate -i "%SPEC_FILE%"
   if errorlevel 1 (
     exit /b 1
   )
