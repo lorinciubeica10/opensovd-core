@@ -1,0 +1,66 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug unit tests in library 'opensovd_server_lib'",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "test",
+          "--package=opensovd-server"
+        ]
+      }
+    },
+    {
+      "name": "Debug executable 'opensovd-server'",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "run",
+          "--bin=opensovd-server",
+          "--package=opensovd-server"
+        ]
+      },
+      "args": []
+    },
+    {
+      "name": "Debug unit tests in executable 'opensovd-server'",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "test",
+          "--bin=opensovd-server",
+          "--package=opensovd-server"
+        ]
+      }
+    },
+    {
+      "name": "Debug unit tests in library 'sovd_api'",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "test",
+          "--package=sovd-api"
+        ]
+      }
+    },
+    {
+      "name": "Debug unit tests in library 'sovd_tracing'",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "test",
+          "--package=sovd-tracing"
+        ]
+      }
+    }
+  ]
+}

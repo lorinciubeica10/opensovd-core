@@ -11,14 +11,31 @@
 * SPDX-License-Identifier: Apache-2.0
 */
 
-use serde::{Deserialize, Serialize};
-use serde_json::{Value as JsonValue, to_value};
-
+use hyper::Client;
+use hyper::body::Body;
 use hyper::client::HttpConnector;
-use hyper::{Body, Client, Request, Response};
-use serde_json::{Map, Value};
+use hyper::{Request, Response};
 
-use log::{error, info};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+
+use serde_json::{Map, Value};
+use sovd_api::apis::data_retrieval::{
+    EntityCollectionEntityIdDataDataIdGetResponse, EntityCollectionEntityIdDataGetResponse,
+    EntityCollectionEntityIdDataGroupsGetResponse,
+};
+use sovd_api::apis::discovery::EntityCollectionEntityIdGetResponse;
+use sovd_api::models::{
+    AnyPathDocsGetDefaultResponse, EntityCollectionEntityIdDataDataIdGet200Response,
+    EntityCollectionEntityIdDataDataIdGet200ResponseErrorsInnerError,
+    EntityCollectionEntityIdDataGet200Response,
+    EntityCollectionEntityIdDataGet200ResponseItemsInner,
+    EntityCollectionEntityIdDataGroupsGet200Response,
+    EntityCollectionEntityIdDataGroupsGet200ResponseItemsInner,
+    EntityCollectionEntityIdGet200Response, EntityCollectionGet200ResponseItemsInner,
+};
+
+use std::fmt::Debug;
 use std::fs;
 use std::str;
 use sysinfo::{CpuRefreshKind, Pid, ProcessRefreshKind, ProcessStatus, RefreshKind, System};
@@ -34,15 +51,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use serde_json::json;
-
 use sysinfo::Disks;
-
-use openapi_client::EntityCollectionEntityIdDataDataIdGetResponse;
-use openapi_client::EntityCollectionEntityIdDataGetResponse;
-use openapi_client::EntityCollectionEntityIdDataGroupsGetResponse;
-use openapi_client::EntityCollectionEntityIdGetResponse;
-use openapi_client::models::*;
 
 use lazy_static::lazy_static;
 use tokio::time::timeout;
@@ -126,8 +135,10 @@ pub fn find_and_create_read_value(
 
             return Some(EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
-                data: to_value(any_value).expect("Failed to create read value"),
-                errors: None,
+                // data: to_value(any_value).expect("Failed to create read value"),
+                data: sovd_api::types::Object::from_str("").unwrap(),
+
+                r_errors: None,
                 schema: None,
             });
         }
@@ -161,8 +172,9 @@ pub fn filter_by_writable(
 
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
-                data: to_value(any_value).expect("Failed to filter writables"),
-                errors: None,
+                // data: to_value(any_value).expect("Failed to filter writables"),
+                data: sovd_api::types::Object::from_str("").unwrap(),
+                r_errors: None,
                 schema: None,
             };
 
@@ -197,8 +209,9 @@ pub fn find_by_identifier(
             .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
-            data: to_value(any_value).expect("Failed to find by identifier"),
-            errors: None,
+            // data: to_value(any_value).expect("Failed to find by identifier"),
+            data: sovd_api::types::Object::from_str("").unwrap(),
+            r_errors: None,
             schema: None,
         };
 
@@ -229,8 +242,9 @@ pub fn find_by_name(
             .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
-            data: to_value(any_value).expect("Failed to find by name"),
-            errors: None,
+            // data: to_value(any_value).expect("Failed to find by name"),
+            data: sovd_api::types::Object::from_str("").unwrap(),
+            r_errors: None,
             schema: None,
         };
 
@@ -275,7 +289,11 @@ pub fn create_entity_collection_response(
     let inline_response = EntityCollectionEntityIdDataGroupsGet200Response::new(items);
 
     // Create and return the EntityCollectionEntityIdDataGroupsGetResponse
-    Ok(EntityCollectionEntityIdDataGroupsGetResponse::TheRequestWasSuccessful(inline_response))
+    Ok(
+        EntityCollectionEntityIdDataGroupsGetResponse::Status200_TheRequestWasSuccessful(
+            inline_response,
+        ),
+    )
 }
 
 pub fn group_by_writability(
@@ -314,7 +332,7 @@ pub fn group_by_writability(
 
     // Create and return the EntityCollectionEntityIdDataGroupsGetResponse
     Ok(
-        EntityCollectionEntityIdDataGroupsGetResponse::TheRequestWasSuccessful(
+        EntityCollectionEntityIdDataGroupsGetResponse::Status200_TheRequestWasSuccessful(
             EntityCollectionEntityIdDataGroupsGet200Response::new(items),
         ),
     )
@@ -351,7 +369,7 @@ pub fn prepare_data_response(
 
     let inline_response = EntityCollectionEntityIdDataGet200Response::new(items);
 
-    Ok(EntityCollectionEntityIdDataGetResponse::TheRequestWasSuccessful(inline_response))
+    Ok(EntityCollectionEntityIdDataGetResponse::Status200_TheRequestWasSuccessful(inline_response))
 }
 
 // Helper function to create a group based on isWritable
@@ -395,9 +413,10 @@ pub fn find_single_process(
     process_pid: &str,
     base_uri: &str,
 ) -> Option<EntityCollectionGet200ResponseItemsInner> {
-    info!(
+    tracing::info!(
         "Starting find_single_process with process_name: '{}' and base_uri: '{}'",
-        process_name, base_uri
+        process_name,
+        base_uri
     );
 
     let system = System::new_with_specifics(
@@ -415,7 +434,7 @@ pub fn find_single_process(
         let pid: u32 = process_pid.parse().unwrap();
         process = processes.get(&pid).unwrap();
     }
-    info!(
+    tracing::info!(
         "Found process with process_name: '{}' and pid: '{}'",
         process_name,
         process.pid()
@@ -425,7 +444,7 @@ pub fn find_single_process(
     let pid_name = format!("{}-{}", name, process.pid());
     let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
 
-    info!(
+    tracing::info!(
         "Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'",
         process.pid(),
         pid_name,
@@ -571,7 +590,7 @@ pub fn get_cpu_usage(pid_str: &str) -> Option<f32> {
     let pid: Pid = match Pid::from_str(pid_str) {
         Ok(p) => p,
         Err(_) => {
-            error!("Error: PID must be a valid number.");
+            tracing::error!("Error: PID must be a valid number.");
             return None;
         }
     };
@@ -586,10 +605,10 @@ pub fn get_cpu_usage(pid_str: &str) -> Option<f32> {
     // Get the process
     if let Some(process) = system.process(pid) {
         let cpu_usage = process.cpu_usage();
-        info!("CPU usage of process {}: {}%", pid, cpu_usage);
+        tracing::info!("CPU usage of process {}: {}%", pid, cpu_usage);
         Some(cpu_usage)
     } else {
-        info!("Process with PID {} not found", pid);
+        tracing::info!("Process with PID {} not found", pid);
         None
     }
 }
@@ -597,8 +616,8 @@ pub fn get_cpu_usage(pid_str: &str) -> Option<f32> {
 pub fn disk_total_space() {
     let disks = Disks::new_with_refreshed_list();
     for disk in disks.list() {
-        info!("[{:?}] {}B", disk.name(), disk.total_space());
-        info!("[{:?}] {}B", disk.name(), disk.available_space());
+        tracing::info!("[{:?}] {}B", disk.name(), disk.total_space());
+        tracing::info!("[{:?}] {}B", disk.name(), disk.available_space());
     }
 }
 
@@ -610,7 +629,7 @@ pub fn get_process_filesize(pid: u32) -> Option<u64> {
     let process = system.process(Pid::from_u32(pid)).unwrap();
     let final_size = process.memory();
 
-    info!("get_process_filesize {}", final_size);
+    tracing::info!("get_process_filesize {}", final_size);
 
     Some(final_size) // Convert the result of `rss_bytes` to `u64` and return it
 }
@@ -626,13 +645,13 @@ pub fn get_executable_size(pid: u32) -> Option<u64> {
             match fs::metadata(exe_path) {
                 Ok(metadata) => Some(metadata.len()),
                 Err(err) => {
-                    error!("Error reading metadata of the executable file: {}", err);
+                    tracing::error!("Error reading metadata of the executable file: {}", err);
                     None
                 }
             }
         }
         Err(err) => {
-            error!(
+            tracing::error!(
                 "Error reading symbolic link to the executable file: {}",
                 err
             );
@@ -644,7 +663,7 @@ pub fn get_executable_size(pid: u32) -> Option<u64> {
 pub fn get_disk_usage_for_pid(pid: i32) -> Option<u64> {
     let proc_fd_path = format!("/proc/{}/fd", pid);
     let mut disk_usage = 0;
-    info!("get_disk_usage_for_pid with {}", pid);
+    tracing::info!("get_disk_usage_for_pid with {}", pid);
     if let Ok(entries) = fs::read_dir(proc_fd_path) {
         for entry in entries {
             if let Ok(entry) = entry {
@@ -656,10 +675,10 @@ pub fn get_disk_usage_for_pid(pid: i32) -> Option<u64> {
                 }
             }
         }
-        info!("get_disk_usage_for_pid {}", disk_usage);
+        tracing::info!("get_disk_usage_for_pid {}", disk_usage);
         Some(disk_usage)
     } else {
-        info!("NONE {}", disk_usage);
+        tracing::info!("NONE {}", disk_usage);
         None
     }
 }
@@ -716,12 +735,12 @@ pub fn get_disk_io(pid: &str) -> Option<(u64, u64)> {
             let read_bytes_total = disk_usage.total_read_bytes;
             let write_bytes = disk_usage.written_bytes;
             let write_byte_total = disk_usage.total_written_bytes;
-            info!(
+            tracing::info!(
                 "Read {}, Total read {}",
                 read_bytes / 1000,
                 read_bytes_total / 1000
             );
-            info!(
+            tracing::info!(
                 "Write {}, Total written {}",
                 write_bytes / 1000,
                 write_byte_total / 1000
@@ -757,12 +776,15 @@ pub fn handle_app_resource(
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                     id: id.to_string(),
-                    data: to_value(response_data).expect("Failed to serialize CPU usage"),
-                    errors: None,
+                    // data: to_value(response_data).expect("Failed to serialize CPU usage"),
+                    data: sovd_api::types::Object::from_str("").unwrap(),
+                    r_errors: None,
                     schema: None,
                 };
 
-                EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+                    read_value,
+                )
             } else {
                 let error = AnyPathDocsGetDefaultResponse {
                     error_code: "UnknownResource".to_string(),
@@ -771,7 +793,9 @@ pub fn handle_app_resource(
                     translation_id: None,
                     parameters: None,
                 };
-                EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                    error,
+                )
             }
         }
         "memory" => {
@@ -795,12 +819,15 @@ pub fn handle_app_resource(
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                     id: id.to_string(),
-                    data: to_value(response_data).expect("Failed to serialize memory usage"),
-                    errors: None,
+                    // data: to_value(response_data).expect("Failed to serialize memory usage"),
+                    data: sovd_api::types::Object::from_str("").unwrap(),
+                    r_errors: None,
                     schema: None,
                 };
 
-                EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+                    read_value,
+                )
             } else {
                 let error = AnyPathDocsGetDefaultResponse {
                     error_code: "UnknownResource".to_string(),
@@ -809,12 +836,14 @@ pub fn handle_app_resource(
                     translation_id: None,
                     parameters: None,
                 };
-                EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                    error,
+                )
             }
         }
         "disk" => {
             if let Some(disk_io) = get_executable_size(pid_to_monitor.parse::<u32>().unwrap()) {
-                info!("disk {}", disk_io);
+                tracing::info!("disk {}", disk_io);
                 let disks = Disks::new_with_refreshed_list();
                 let disk_space_available = disks.get(0).unwrap().available_space();
                 let total_disk_space = disks.get(0).unwrap().total_space();
@@ -832,11 +861,14 @@ pub fn handle_app_resource(
 
                 let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                     id: id.to_string(),
-                    data: to_value(response_data).expect("Failed to serialize disk usage"),
-                    errors: None,
+                    // data: to_value(response_data).expect("Failed to serialize disk usage"),
+                    data: sovd_api::types::Object::from_str("").unwrap(),
+                    r_errors: None,
                     schema: None,
                 };
-                EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+                    read_value,
+                )
             } else {
                 let error = AnyPathDocsGetDefaultResponse {
                     error_code: "UnknownResource".to_string(),
@@ -845,7 +877,9 @@ pub fn handle_app_resource(
                     translation_id: None,
                     parameters: None,
                 };
-                EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+                EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                    error,
+                )
             }
         }
         "all" => {
@@ -916,14 +950,17 @@ pub fn handle_app_resource(
 
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: id.to_string(),
-                data: to_value(response_data).expect("Failed to serialize disk usage"),
-                errors: None,
+                // data: to_value(response_data).expect("Failed to serialize disk usage"),
+                data: sovd_api::types::Object::from_str("").unwrap(),
+                r_errors: None,
                 schema: None,
             };
-            EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+            EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+                read_value,
+            )
         }
         _ => {
-            info!("Unknown resource type: {}", resource);
+            tracing::info!("Unknown resource type: {}", resource);
             let error = AnyPathDocsGetDefaultResponse {
                 error_code: "UnknownResource".to_string(),
                 message: "Unknown resource.".to_string(),
@@ -931,7 +968,9 @@ pub fn handle_app_resource(
                 translation_id: None,
                 parameters: None,
             };
-            EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+            EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                error,
+            )
         }
     }
 }
@@ -950,17 +989,18 @@ pub fn get_system_cpu_usage() -> Option<f32> {
 
     for cpu in s.cpus() {
         cpu_usage_sum += cpu.cpu_usage();
-        info!(
+        tracing::info!(
             "cpu.cpu_usage(): {} num cores: {}",
             cpu.cpu_usage(),
             num_cores
         );
     }
-    info!("cpu_usage_sum: {} num cores: {}", cpu_usage_sum, num_cores);
+    tracing::info!("cpu_usage_sum: {} num cores: {}", cpu_usage_sum, num_cores);
     Some(cpu_usage_sum / num_cores)
 }
 
 pub fn get_system_memory_usage() -> Option<(u64, u64)> {
+    // TODO: Replace determination via procfs by utilizing crate sysinfo
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         let mut total_memory_kb = 0;
         let mut free_memory_kb = 0;
@@ -1011,12 +1051,12 @@ pub fn handle_system_resource(
     id: &str,
 ) -> EntityCollectionEntityIdDataDataIdGetResponse {
     match resource {
-        "cpu" => handle_cpu_resource(id),
+        "cpu" => handle_cpu_resource(entity, id),
         "memory" => handle_memory_resource(id),
         "disk" => handle_disk_resource(id),
         "all" => handle_all_system_resources(id, entity),
         _ => {
-            info!("Unknown resource type: {}", resource);
+            tracing::info!("Unknown resource type: {}", resource);
             let error = AnyPathDocsGetDefaultResponse {
                 error_code: "UnknownResource".to_string(),
                 message: "Unknown resource.".to_string(),
@@ -1024,36 +1064,36 @@ pub fn handle_system_resource(
                 translation_id: None,
                 parameters: None,
             };
-            EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+            EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                error,
+            )
         }
     }
 }
 
-pub fn handle_cpu_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResponse {
+pub fn handle_cpu_resource(
+    entity: &str,
+    id: &str,
+) -> EntityCollectionEntityIdDataDataIdGetResponse {
     if let Some(cpu_usage) = get_system_cpu_usage() {
-        let cpu_usage_formatted = format!("{:.2}%", cpu_usage); // Format CPU usage as a percentage
-        let mut response_data = BTreeMap::new();
+        let mut response_data = serde_json::value::Map::new();
         response_data.insert(
-            "cpu_usage".to_string(),
-            JsonValue::String(cpu_usage_formatted),
+            "cpu_usage".to_owned(),
+            JsonValue::String(format!("{:.2}%", cpu_usage)),
         );
         response_data.insert(
-            "description".to_string(),
-            JsonValue::String(format!(
-                "CPU usage for component {}",
-                get_first_part_after_dash(&id)
-            )),
+            "description".to_owned(),
+            JsonValue::String(format!("CPU usage for component {}", entity)),
         );
-        response_data.insert("name".to_string(), JsonValue::String("CPU".to_string()));
-
-        let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
-            id: id.to_string(),
-            data: to_value(response_data).expect("Failed to serialize handle cpu usage"),
-            errors: None,
-            schema: None,
-        };
-
-        EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+        response_data.insert("name".to_owned(), JsonValue::String("CPU".to_owned()));
+        EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+            EntityCollectionEntityIdDataDataIdGet200Response {
+                id: id.to_string(),
+                data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+                r_errors: None,
+                schema: None,
+            },
+        )
     } else {
         let error = AnyPathDocsGetDefaultResponse {
             error_code: "UnknownResource".to_string(),
@@ -1062,7 +1102,7 @@ pub fn handle_cpu_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRes
             translation_id: None,
             parameters: None,
         };
-        EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+        EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(error)
     }
 }
 fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResponse {
@@ -1076,12 +1116,13 @@ fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResp
 
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: id.to_string(),
-            data: to_value(response_data).expect("Failed to serialize handle memory usage"),
-            errors: None,
+            // data: to_value(response_data).expect("Failed to serialize handle memory usage"),
+            data: sovd_api::types::Object::from_str("").unwrap(),
+            r_errors: None,
             schema: None,
         };
 
-        EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+        EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(read_value)
     } else {
         let error = AnyPathDocsGetDefaultResponse {
             error_code: "UnknownResource".to_string(),
@@ -1090,7 +1131,7 @@ fn handle_memory_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetResp
             translation_id: None,
             parameters: None,
         };
-        EntityCollectionEntityIdDataDataIdGetResponse::AnUnexpectedRequestOccurred(error)
+        EntityCollectionEntityIdDataDataIdGetResponse::Status0_AnUnexpectedRequestOccurred(error)
     }
 }
 
@@ -1106,19 +1147,27 @@ pub fn handle_disk_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRe
     );
     resources.insert(("total_disk_space_bytes").into(), total_disk_space.into());
 
-    let response_data = json!({
-        "description": "System resources monitoring Disk space",
-        "name": format!("Component {}", get_first_part_after_dash(id)), // Extract the first part before the first hyphen
-        "resources": resources
-    });
+    let mut response_data = serde_json::Map::new();
+    response_data.insert(
+        "description".to_owned(),
+        serde_json::Value::String("System resources monitoring Disk space".to_owned()),
+    );
+    response_data.insert(
+        "name".to_owned(),
+        // Extract the first part before the first hyphen
+        serde_json::Value::String(format!("Component {}", get_first_part_after_dash(id))),
+    );
+    response_data.insert("resources".to_owned(), serde_json::Value::Object(resources));
 
-    let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
-        id: id.to_string(),
-        data: to_value(response_data).expect("Error"),
-        errors: None,
-        schema: None,
-    };
-    EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+    EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
+        EntityCollectionEntityIdDataDataIdGet200Response {
+            id: id.to_string(),
+            // data: to_value(response_data).expect("Error"),
+            data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+            r_errors: None,
+            schema: None,
+        },
+    )
 }
 
 fn handle_all_system_resources(
@@ -1204,12 +1253,12 @@ fn handle_all_system_resources(
 
     let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
         id: id.to_string(),
-        data: to_value(response_data).expect("Failed to handle all system resource"),
-        errors: None,
+        data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+        r_errors: None,
         schema: None,
     };
 
-    EntityCollectionEntityIdDataDataIdGetResponse::TheRequestWasSuccessful(read_value)
+    EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(read_value)
 }
 
 pub async fn gateway_request(
@@ -1247,7 +1296,7 @@ pub async fn gateway_request(
             let body_bytes = hyper::body::to_bytes(request_body).await?;
             let size = body_bytes.len();
 
-            info!("Genau Größe des request_body: {} Bytes", size);
+            tracing::info!("Genau Größe des request_body: {} Bytes", size);
 
             // Check if body is actually present
             if body_bytes.is_empty() {
@@ -1267,7 +1316,7 @@ pub async fn gateway_request(
     let response = timeout(Duration::from_secs(30), client.request(request)).await??;
 
     // Output response status and return the response
-    info!("Received response status: {:?}", response.status());
+    tracing::info!("Received response status: {:?}", response.status());
     Ok(response)
 }
 
@@ -1277,10 +1326,10 @@ pub async fn is_host_available(host: &str, port: u16) -> bool {
         &(&host[..], port).to_socket_addrs().unwrap().next().unwrap(),
         Duration::from_secs(5),
     ) {
-        info!("Verbindung zu {}:{} erfolgreich.", host, port);
+        tracing::info!("Verbindung zu {}:{} erfolgreich.", host, port);
         true // Connection successful -> Port available
     } else {
-        info!("Verbindung zu {}:{} fehlgeschlagen.", host, port);
+        tracing::info!("Verbindung zu {}:{} fehlgeschlagen.", host, port);
         false // Connection failed -> Port not available
     }
 }
@@ -1410,7 +1459,7 @@ pub fn extract_response_data_from_json_to_response(
             // Add more fields here
             {
                 // Return of the created EntityCollectionEntityIdGetResponse
-                EntityCollectionEntityIdGetResponse::TheResponseBodyContainsAPropertyForEachSupportedResourceAndRelatedCollection(response)
+                EntityCollectionEntityIdGetResponse::Status200_TheResponseBodyContainsAPropertyForEachSupportedResourceAndRelatedCollection(response)
             } else {
                 // Return None if no values are present in the response
                 let error = AnyPathDocsGetDefaultResponse {
@@ -1420,7 +1469,7 @@ pub fn extract_response_data_from_json_to_response(
                     translation_id: None,
                     parameters: None,
                 };
-                EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
+                EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(error)
             }
         } else {
             // Return None if the required fields are missing
@@ -1431,7 +1480,7 @@ pub fn extract_response_data_from_json_to_response(
                 translation_id: None,
                 parameters: None,
             };
-            EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
+            EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(error)
         }
     } else {
         // Return None if it is not an object
@@ -1442,7 +1491,7 @@ pub fn extract_response_data_from_json_to_response(
             translation_id: None,
             parameters: None,
         };
-        EntityCollectionEntityIdGetResponse::AnUnexpectedRequestOccurred(error)
+        EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(error)
     }
 }
 

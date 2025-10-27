@@ -10,16 +10,40 @@ homepage = "https://github.com/eclipse-opensovd/opensovd-core"
 [workspace]
 resolver = "3"
 members = [
-  "sovd-handlers",
   "sovd-server",
+  "sovd-tracing"
 ]
 
 [workspace.dependencies]
-hyper = "0.14"
-log = "0.4.28"
-openapi_client = { path = "target/generated/openapi_client"}
-openssl = { version = "0.10", features = ["vendored"] } 
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+# ---- opensovd core crates ----
+sovd-api = { path = "target/generated/sovd-api"}
 sovd-handlers = { path = "sovd-handlers" }
+sovd-tracing = { path = "sovd-tracing" }
+
+# ---- common crates ----
+clap = "4.5.50"
+figment = "0.10.19"
+hashbrown = "0.15"
+serde = "1.0"
+serde_json = "1.0"
+openssl = { version = "0.10", features = ["vendored"] } 
 tokio = { version = "1.47.1", features = ["full"] }
+
+# ---- tracing & logging crates----
+console-subscriber = "0.4.1"
+nu-ansi-term = "0.50"
+strip-ansi-escapes = "0.2.1"
+tracing = "0.1.41"
+tracing-core = "0.1.34"
+tracing-appender = "0.2.3"
+tracing-opentelemetry = "0.31.0"
+tracing-subscriber = { version = "0.3.20", default-features = false }
+
+# ---- opentelemetry crates----
+opentelemetry = { version = "0.30.0", default-features = false }
+opentelemetry_sdk = { version = "0.30.0", default-features = false }
+opentelemetry-otlp = "0.30.0"
+opentelemetry-semantic-conventions = "0.30.0"
+
+# ---- web/api crates----
+hyper = { version = "0.14" }

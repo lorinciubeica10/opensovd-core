@@ -12,12 +12,15 @@ homepage.workspace = true
 license.workspace = true
 
 [dependencies]
-hyper = { workspace = true }
+sovd-api = {workspace = true }
+sovd-tracing = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
 lazy_static = "1.5.0"
-log = { workspace = true }
-openapi_client = { workspace = true }
 openssl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sysinfo = "0.30.8"
 tokio = { workspace = true }
+
+# logging & tracing
+tracing = { workspace = true }

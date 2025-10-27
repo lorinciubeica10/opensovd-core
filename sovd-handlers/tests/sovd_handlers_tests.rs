@@ -2,7 +2,7 @@
 mod sovd_handlers_tests {
     use std::collections::BTreeMap;
 
-    use openapi_client::models::EntityCollectionGet200ResponseItemsInner;
+    use sovd_api::models::EntityCollectionGet200ResponseItemsInner;
     use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
     #[test]
