@@ -1089,7 +1089,7 @@ pub fn handle_cpu_resource(
         EntityCollectionEntityIdDataDataIdGetResponse::Status200_TheRequestWasSuccessful(
             EntityCollectionEntityIdDataDataIdGet200Response {
                 id: id.to_string(),
-                data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+                data: sovd_api::types::Object::new(serde_json::Value::Object(response_data)),
                 r_errors: None,
                 schema: None,
             },
@@ -1163,7 +1163,7 @@ pub fn handle_disk_resource(id: &str) -> EntityCollectionEntityIdDataDataIdGetRe
         EntityCollectionEntityIdDataDataIdGet200Response {
             id: id.to_string(),
             // data: to_value(response_data).expect("Error"),
-            data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+            data: sovd_api::types::Object::new(serde_json::Value::Object(response_data)),
             r_errors: None,
             schema: None,
         },
@@ -1253,7 +1253,7 @@ fn handle_all_system_resources(
 
     let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
         id: id.to_string(),
-        data: sovd_api::types::Object(serde_json::Value::Object(response_data)),
+        data: sovd_api::types::Object::new(serde_json::Value::Object(response_data)),
         r_errors: None,
         schema: None,
     };
