@@ -6,7 +6,7 @@ CMD="${1:-}"
 # --- GLOBAL CONFIGURATION ---
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${ROOT_DIR}/target/generated/openapi_client"
-SPEC_FILE="${ROOT_DIR}/sovd-interfaces/openapi_client.yaml"
+SPEC_FILE="${ROOT_DIR}/sovd-interfaces/sovd-api.yaml"
 GENERATOR_DIR="${ROOT_DIR}/target"
 GENERATOR_JAR="${GENERATOR_DIR}/openapi-generator-cli.jar"
 GENERATOR_VERSION="7.10.0"
