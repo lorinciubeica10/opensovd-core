@@ -4,7 +4,7 @@ title SOVD Gateway
 actor "SOVD Offboard Client" as Client
 participant "SOVD Gateway" as Gateway
 participant "mDNS Responder" as MDNS
-participant "SOVD Server" as A
+participant "Chassis SOVD Server" as A
 participant "Classic Diagnostics Adapter" as B
 
 == Service Discovery Phase ==
@@ -12,33 +12,44 @@ participant "Classic Diagnostics Adapter" as B
 A -> MDNS: Advertise _sovd._tcp.local (port=7690)
 B -> MDNS: Advertise _sovd._tcp.local (port=7690)
 
+MDNS -> Gateway: Notify(ServiceUp, A@7690)
+
 note right of Gateway
 mDNS TXT Record:
-ecu_id={entity}
-path=/{entity-path}
-version=v1
+OEM_Prefix={entity}
 end note
 
-MDNS -> Gateway: Notify(ServiceUp, A@7690)
+
 note right of Gateway
 #[derive(Debug, Clone)]
 pub struct UpstreamInfo {
     pub instance_name: String,               // e.g. "{entity}._sovd._tcp.local"
-    pub hostname: String,                    // e.g. "entity.com"
+    pub hostname: String,                    // e.g. "<SOVD-Server-Host>"
     pub address: Option<IpAddr>,             // resolved IP
     pub port: u16,                           // e.g. 7690
-    pub path_prefix: String,                 // e.g. "/{entity}/"
+    pub vendor_uri_suffix: String,           // e.g. "http://chassis.hpc:7690/<vendor_uri_suffix>"
+    pub base_path: String,                   // e.g. "http://chassis.hpc/"
+    pub version: String,                     // e.g. "v1"
+    pub entities: Vec<String>,               // entity-collections url list
 }
 end note
 
 Gateway -> A: HTTP GET /{entity-path}/version-info
-A --> Gateway: 200 OK {version: "1.0.0"}
-Gateway -> Gateway: Update A(version="1.0.0") to active UpstreamInfo list
+A --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://chassis.hpc:7690/","vendor_info": {}}
+Gateway -> Gateway: Update A(version="1.0.0", base_path) to active UpstreamInfo list
+
+Gateway -> A: HTTP GET /{entity-path}/entity-collection
+A --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
+Gateway -> Gateway: Update A(EntityCollection List) to active UpstreamInfo list
 
 MDNS -> Gateway: Notify(ServiceUp, B@7690)
-Gateway -> B: HTTP GET /version-info
-B --> Gateway: 200 OK {version: "1.0.0"}
-Gateway -> Gateway: Add B(version="1.0.0") to active upstream list
+Gateway -> B: HTTP GET /{entity-path}/version-info
+B --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://cda:7690/","vendor_info": {}}
+Gateway -> Gateway: Update B(version="1.0.0", base_path) to active UpstreamInfo list
+
+Gateway -> B: HTTP GET /{entity-path}/entity-collection
+B --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
+Gateway -> Gateway: Update B(EntityCollection List) to active UpstreamInfo list
 
 note right of Gateway
 Active upstream list:
@@ -46,10 +57,24 @@ SOVD Server@7690 (v1.0.0)
 CDA@7690 (v1.0.0)
 end note
 
+
+note right of Gateway
+Routing Table e.g.:
+note "SOVD Gateway Routing Table" as N
+| Instance                     | Hostname    | IP Address   | Port | Vendor URI Suffix | Base Path                     | Entity List |
+| chassis._sovd._tcp.local      | chassis    | 192.168.1.10 | 7690 | Mercedes        | http://chassis.hpc:7690/<oem-specific>/v1     | `{base_path}/components/Steering`, `http://chassis/v1/components/Braking` |
+| powertrain._sovd._tcp.local   | powertrain | 10.0.1.10    | 7690 | BMW             | http://powertrain.hpc:7690/<oem-specific>/v1  | `{base_path}/components/Inverter`, `{base_path}/area/Transmission` |
+end 
+endnote
+
 == Normal Operation ==
 
-Client -> Gateway: GET /v1/chassis/api/data
+
+Client -> Gateway: GET /v1/chassis/data
 Gateway -> A: Forward request (X-Forwarded-*)
+note right of Gateway
+Look up for right sovd server in the routing table
+end note
 A --> Gateway: 200 OK (hrefs, modfied with Forward-Host)
 Gateway --> Client: 200 OK
 
@@ -66,17 +91,27 @@ end note
 
 == New Upstream Appears ==
 
-participant "SOVD Server" as C
+participant "Powertrain SOVD Server" as C
 C -> MDNS: Advertise _sovd._tcp.local (port=8082)
 MDNS -> Gateway: Notify(ServiceUp, C@8082)
-Gateway -> C: HTTP GET /version-info
-C --> Gateway: 200 OK {version: "1.0.0"}
-Gateway -> Gateway: Update C(version="1.0.0") to active UpstreamInfo list
+Gateway -> C: HTTP GET /{entity-path}/version-info
+C --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://cda:7690/","vendor_info": {}}
+Gateway -> Gateway: Update C(version="1.0.0", base_path) to active UpstreamInfo list
+
+Gateway -> C: HTTP GET /{entity-path}/entity-collection
+C --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
+Gateway -> Gateway: Update C(EntityReference List) to active UpstreamInfo list
 
 note right of Gateway
 Active upstream list:
 CDA@7690 (v1.0.0)
-SOVD Server@7690 (v1.0.0)
+Powertrain SOVD Server@8082 (v1.0.0)
 end note
+
+== Gateway Functional requests ==
+note right of Gateway
+In a functional view request, gateway shall query all known upstreams and consolidate the response to the offboard Client 
+end note
+
 
 @enduml

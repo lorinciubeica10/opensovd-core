@@ -1,0 +1,63 @@
+@startuml
+title SOVD Gateway Architecture (Axum Reverse Proxy + mDNS Discovery)
+
+skinparam componentStyle rectangle
+skinparam rectangle {
+  BackgroundColor<<gateway>> #E3F2FD
+  BackgroundColor<<server>> #E8F5E9
+  BackgroundColor<<mdns>> #FFF3E0
+}
+
+actor "Offboard Client" as Client
+
+rectangle "SOVD Gateway" <<gateway>> {
+  component "Axum Web Server\n(HTTP entrypoint)" as Axum
+  component "axum-reverse-proxy\n(Request forwarding)" as Proxy
+  component "Routing Table\n(path_prefix → UpstreamInfo)" as Routing
+  component "mDNS Listener\n(Service discovery task)" as MDNSListener
+  component "Upstream Registry\n(shared Arc<Mutex<HashMap>>)" as Registry
+
+  Axum --> Proxy : HTTP Requests
+  Proxy --> Routing : Lookup path_prefix
+  Routing --> Registry : Resolve UpstreamInfo
+  MDNSListener --> Registry : Add/Remove UpstreamInfo
+}
+
+rectangle "Vehicle Network / System" {
+  component "Chasis SOVD Server" <<server>> as Area1
+  component "Classic Diagnostics Adapter" <<server>> as CDA
+  component "Powertrain SOVD Server (optional)" <<server>> as Area2
+  component "mDNS Responder" <<mdns>> as MDNSResponder
+
+  MDNSResponder -[hidden]-> Area1
+  MDNSResponder -[hidden]-> CDA
+  MDNSResponder -[hidden]-> Area2
+}
+
+Client --> Axum : HTTP API calls\n(GET /v1/chassis/api/data)
+MDNSResponder --> MDNSListener : mDNS Advertise/Goodbye\n(_sovd._tcp.local)
+Proxy --> Area1 : Forwarded HTTP Requests\n(X-Forwarded-*)
+Proxy --> CDA : Forwarded HTTP Requests
+Proxy --> Area2 : (if reachable through Area1)
+
+note right of Routing
+Routing Table Example:
+| Path Prefix | Hostname | Port | Version |
+| /chassis/    | area1     | 7690 | v1  |
+| /componentX/ | cda       | 7690 | v1  |
+| /powertrain/ | area2     | 7690 | v1  |
+
+end note
+
+note right of Registry
+UpstreamInfo {
+  instance_name: String
+  hostname: String
+  address: Option<IpAddr>
+  port: u16
+  path_prefix: String
+  version: Option<String>
+}
+end note
+
+@enduml
