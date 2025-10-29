@@ -16,7 +16,7 @@ Aggregate and standardize responses from other HPCs.
 
 
 # Getting Started
-The source code has parts generated with openapigenerator (https://github.com/OpenAPITools/openapi-generator )
+The source code has parts generated with OpenAPI generator (https://github.com/OpenAPITools/openapi-generator )
 
 # Notes 
 - The software is in beta development. Please be aware of unexpected changes.
@@ -38,11 +38,14 @@ Clean:
 ```
 # Starting sovd_server
 ```
+Copy from config folder sovd_server_apps.conf to target/debug/
+
 sovd_server <ip_address> <port> <hostname> --sovd-mode <sovd_mode>
 <ip_address> : IP address to bind the server to, use localhost for local testing or a public IP for external access.
 <port>       : Any available port in the range 1024-49151, typically used by user applications and services.
-<hostname>   : A desriptive name e.g. chassis-hpc
-<sovd_mode>  : Operation mode either gateway or standalone
+<hostname>   : A desriptive name e.g. chassis-hpc.
+<sovd_mode>  : Operation mode either gateway or standalone.
+<logs>       : Optional configure saving location for log file.
 
 e.g. ./sovd_server <ip-address> <port> chassis-hpc --sovd_mode standalone
 e.g. ./sovd_server <ip-address> <port> telematics --sovd_mode gateway
@@ -91,3 +94,8 @@ Then following specifications start to interogate sovd_server for CPU consumptio
    The same applies to components.
 
    Please note to replace <data_id> with the appropriate identifier or ID for the data or component you wish to access.
+
+
+   # Test integration
+
+   1. Run command: cargo test -p sovd-server
