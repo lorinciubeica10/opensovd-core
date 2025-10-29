@@ -77,7 +77,7 @@ impl sovd_api::apis::discovery::Discovery for ServerImpl {
     ) -> Result<EntityCollectionEntityIdGetResponse, ()> {
         // Check, if requested entity_id is supported. TODO: include registered
         // sub SOVD Servers. Currently, we support only the component which hosts the SOVD server
-        match (path_params.entity_collection.as_str()) {
+        match path_params.entity_collection.as_str() {
             "areas" => todo!(),
             "components" => {
                 if path_params.entity_id != self.id {
