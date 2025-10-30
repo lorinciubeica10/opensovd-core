@@ -20,32 +20,32 @@ OEM_Prefix={entity}
 end note
 
 
+Gateway -> A: HTTP GET /{entity-path}/version-info
+A --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://chassis.hpc:7690/","vendor_info": {}}
+Gateway -> Gateway: Update A(version="1.0.0", base_uri) to active UpstreamInfo list
+
+Gateway -> A: HTTP GET /{entity-path}/entity-collection
+A --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
+Gateway -> Gateway: Update A(EntityCollection List) to active UpstreamInfo list
+
 note right of Gateway
-#[derive(Debug, Clone)]
 pub struct UpstreamInfo {
     pub instance_name: String,               // e.g. "{entity}._sovd._tcp.local"
     pub hostname: String,                    // e.g. "<SOVD-Server-Host>"
     pub address: Option<IpAddr>,             // resolved IP
     pub port: u16,                           // e.g. 7690
     pub vendor_uri_suffix: String,           // e.g. "http://chassis.hpc:7690/<vendor_uri_suffix>"
-    pub base_path: String,                   // e.g. "http://chassis.hpc/"
     pub version: String,                     // e.g. "v1"
+    pub base_uri: String,                    // e.g. "http://chassis.hpc:7690/<vendor_uri_suffix>/v1"
     pub entities: Vec<String>,               // entity-collections url list
 }
 end note
 
-Gateway -> A: HTTP GET /{entity-path}/version-info
-A --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://chassis.hpc:7690/","vendor_info": {}}
-Gateway -> Gateway: Update A(version="1.0.0", base_path) to active UpstreamInfo list
-
-Gateway -> A: HTTP GET /{entity-path}/entity-collection
-A --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
-Gateway -> Gateway: Update A(EntityCollection List) to active UpstreamInfo list
 
 MDNS -> Gateway: Notify(ServiceUp, B@7690)
 Gateway -> B: HTTP GET /{entity-path}/version-info
 B --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://cda:7690/","vendor_info": {}}
-Gateway -> Gateway: Update B(version="1.0.0", base_path) to active UpstreamInfo list
+Gateway -> Gateway: Update B(version="1.0.0", base_uri) to active UpstreamInfo list
 
 Gateway -> B: HTTP GET /{entity-path}/entity-collection
 B --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
@@ -59,16 +59,12 @@ end note
 
 
 note right of Gateway
-Routing Table e.g.:
-note "SOVD Gateway Routing Table" as N
-| Instance                     | Hostname    | IP Address   | Port | Vendor URI Suffix | Base Path                     | Entity List |
-| chassis._sovd._tcp.local      | chassis    | 192.168.1.10 | 7690 | Mercedes        | http://chassis.hpc:7690/<oem-specific>/v1     | `{base_path}/components/Steering`, `http://chassis/v1/components/Braking` |
-| powertrain._sovd._tcp.local   | powertrain | 10.0.1.10    | 7690 | BMW             | http://powertrain.hpc:7690/<oem-specific>/v1  | `{base_path}/components/Inverter`, `{base_path}/area/Transmission` |
-end 
+| Instance                     | Hostname    | IP Address   | Port | Vendor URI Suffix | Base URI                     | Entity List |
+| chassis._sovd._tcp.local  | chassis    | 192.168.1.10 | 7690 | Mercedes        | http://chassis:7690/<oem-specific>/v1     | `{base_uri}/components/Steering`, `http://chassis/v1/components/Braking` |
+| powertrain._sovd._tcp.local   | powertrain | 10.0.1.10    | 7690 | BMW             | http://powertrain:7690/<oem-specific>/v1  | `{base_uri}/components/Inverter`, `{base_uri}/area/Transmission` |
 endnote
 
 == Normal Operation ==
-
 
 Client -> Gateway: GET /v1/chassis/data
 Gateway -> A: Forward request (X-Forwarded-*)
@@ -96,7 +92,7 @@ C -> MDNS: Advertise _sovd._tcp.local (port=8082)
 MDNS -> Gateway: Notify(ServiceUp, C@8082)
 Gateway -> C: HTTP GET /{entity-path}/version-info
 C --> Gateway: 200 OK {"version":"1.0.0","base_uri":"http://cda:7690/","vendor_info": {}}
-Gateway -> Gateway: Update C(version="1.0.0", base_path) to active UpstreamInfo list
+Gateway -> Gateway: Update C(version="1.0.0", base_uri) to active UpstreamInfo list
 
 Gateway -> C: HTTP GET /{entity-path}/entity-collection
 C --> Gateway: 200 OK {[{"name": "component","translation_id":"id","href":"base_uri"}]}
