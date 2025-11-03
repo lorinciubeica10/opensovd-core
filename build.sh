@@ -5,17 +5,15 @@ CMD="${1:-}"
 
 # --- GLOBAL CONFIGURATION ---
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUT_DIR="${ROOT_DIR}/target/generated/openapi_client"
+OUT_DIR="${ROOT_DIR}/target/generated/sovd-api"
 SPEC_FILE="${ROOT_DIR}/sovd-interfaces/sovd-api.yaml"
 GENERATOR_DIR="${ROOT_DIR}/target"
-GENERATOR_JAR="${GENERATOR_DIR}/openapi-generator-cli.jar"
-GENERATOR_VERSION="7.10.0"
+GENERATOR_VERSION="7.16.0"
+GENERATOR_JAR="${GENERATOR_DIR}/openapi-generator-cli-${GENERATOR_VERSION}.jar"
 GENERATOR_URL="https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/${GENERATOR_VERSION}/openapi-generator-cli-${GENERATOR_VERSION}.jar"
 
 # --- HELPER FUNCTIONS ---
-
 function check_required_tools() {
-
     echo "==> Checking required tools on Linux..."
     local missing_tools=()
 
@@ -72,9 +70,29 @@ function generate_code() {
     java -jar "${GENERATOR_JAR}" generate \
         -i "${SPEC_FILE}" \
         -g rust-server \
-        -o "${OUT_DIR}"
+        -o "${OUT_DIR}" \
+        --additional-properties=packageName=sovd-api
 
     echo "Generated Rust code at ${OUT_DIR}"
+
+    # Patch generated code
+    # It seems, that openapi generator isn't generating constructor and validator 
+    # implementations for self defined type 'Object'
+    echo >> "${OUT_DIR}/src/types.rs"
+    echo impl validator::Validate for ByteArray { >> "${OUT_DIR}/src/types.rs"
+    echo     fn validate\(\&self\) -\> std::result::Result\<\(\), validator::ValidationErrors\> { >> "${OUT_DIR}/src/types.rs"
+    echo         Ok\(\(\)\) >> "${OUT_DIR}/src/types.rs"
+    echo     } >> "${OUT_DIR}/src/types.rs"
+    echo } >> "${OUT_DIR}/src/types.rs"
+    echo >> "${OUT_DIR}/src/types.rs"
+    echo impl Object { >> "${OUT_DIR}/src/types.rs"
+    echo    pub fn new\(value: serde_json::Value\) -\> Self { >> "${OUT_DIR}/src/types.rs"
+    echo        Self\(value\) >> "${OUT_DIR}/src/types.rs"
+    echo    } >> "${OUT_DIR}/src/types.rs"
+    echo } >> "${OUT_DIR}/src/types.rs"
+    # Fix http return code in generated server code in some error cases (it 
+    # causes a runtime error elsewise)
+    sed -i 's/response.status(0)/response.status(200)/g' "${OUT_DIR}/src/server/mod.rs"
 }
 
 function build_project() {
