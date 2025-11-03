@@ -17,7 +17,7 @@ use hyper::client::HttpConnector;
 use hyper::{Request, Response};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
+use serde_json::{Value as JsonValue, to_value};
 
 use serde_json::{Map, Value};
 use sovd_api::apis::data_retrieval::{
@@ -135,9 +135,7 @@ pub fn find_and_create_read_value(
 
             return Some(EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
-                // data: to_value(any_value).expect("Failed to create read value"),
-                data: sovd_api::types::Object::from_str("").unwrap(),
-
+                data: sovd_api::types::Object::new(to_value(any_value).expect("Failed to create read value")),
                 r_errors: None,
                 schema: None,
             });
@@ -172,8 +170,7 @@ pub fn filter_by_writable(
 
             let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
                 id: element.identifier.to_string(),
-                // data: to_value(any_value).expect("Failed to filter writables"),
-                data: sovd_api::types::Object::from_str("").unwrap(),
+                data: sovd_api::types::Object::new(to_value(any_value).expect("Failed to filter writables")),
                 r_errors: None,
                 schema: None,
             };
@@ -209,8 +206,7 @@ pub fn find_by_identifier(
             .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
-            // data: to_value(any_value).expect("Failed to find by identifier"),
-            data: sovd_api::types::Object::from_str("").unwrap(),
+            data: sovd_api::types::Object::new(to_value(any_value).expect("Failed to find by identifier")),
             r_errors: None,
             schema: None,
         };
@@ -242,8 +238,7 @@ pub fn find_by_name(
             .collect();
         let read_value = EntityCollectionEntityIdDataDataIdGet200Response {
             id: element.identifier.to_string(),
-            // data: to_value(any_value).expect("Failed to find by name"),
-            data: sovd_api::types::Object::from_str("").unwrap(),
+            data: sovd_api::types::Object::new(to_value(any_value).expect("Failed to find by name")),
             r_errors: None,
             schema: None,
         };
@@ -498,6 +493,22 @@ pub fn find_processes(
     }
 
     response_body // Return the list of EntityReferences
+}
+
+// Function to search and return pid
+pub fn get_process_pid(search_term: &str) -> Option<i32> {
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+
+    system.processes().iter().find_map(|(_, process)| {
+        let cmd_string = process.cmd().join(" ");
+        if cmd_string.contains(search_term) && process.status() != ProcessStatus::Idle {
+            Some(process.pid().as_u32() as i32) // Convert Pid to i32
+        } else {
+            None
+        }
+    })
 }
 
 // Find an entity by name and return its reference

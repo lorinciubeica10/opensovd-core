@@ -1,22 +1,14 @@
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use sovd_handlers::get_process_pid;
-use sovd_server::server_config::ServerConfig;
-use sovd_server::sovd_server::spawn_test_server;
+use opensovd_server_lib::config::configfile::Configuration;
+use opensovd_server_lib::spawn_test_server;
 use std::sync::Mutex;
 use std::time::Duration;
 
 // Static configuration for the test server using Lazy initialization
-static SERVER_CONFIG: Lazy<ServerConfig> = Lazy::new(|| {
-    ServerConfig::create_server_settings(
-        "../config/sovd_server_apps.conf", // Path to server config file
-        "http".to_string(),                // Protocol
-        "127.0.0.1".to_string(),           // Host
-        "0".to_string(),                   // Port (0 means auto-assign)
-        "standalone".to_string(),          // Mode
-        "chassis-hpc".to_string(),         // Component name
-    )
-    .expect("Failed to create server config")
+static SERVER_CONFIG: Lazy<Configuration> = Lazy::new(|| {
+    Configuration::default()
 });
 
 // Static variable to store the server address once started
@@ -34,7 +26,7 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
 async fn start_server() {
     let mut addr_lock = SERVER_ADDR.lock().unwrap();
     if addr_lock.is_none() {
-        let (addr, _handle) = spawn_test_server(&SERVER_CONFIG).await;
+        let (addr, _handle) = spawn_test_server(&*SERVER_CONFIG).await;
         *addr_lock = Some(addr.to_string());
         drop(addr_lock); // Release lock before waiting
         wait_for_server_ready(&addr.to_string()).await;

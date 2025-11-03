@@ -12,8 +12,10 @@
 */
 
 use sovd_api::server;
-use std::sync::Arc;
-use tokio::{net::TcpListener, signal};
+use std::{net::SocketAddr, sync::Arc};
+use tokio::{net::TcpListener, signal, task::JoinHandle};
+
+use crate::config::configfile::Configuration;
 
 mod apis;
 pub mod config;
@@ -60,4 +62,29 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
+}
+
+pub async fn spawn_test_server(config: &Configuration) -> (SocketAddr, JoinHandle<()>) {
+    // Init Axum server instance (the generated server builder wraps our implementation)
+    let id = config.server.node_id.to_owned();
+    let name = config.server.node_name.to_owned();
+    let app = Arc::new(ServerImpl { id: id, name: name });
+    let app = server::new(app);
+
+    // Bind to port 0 to let OS assign a free port
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind");
+    let addr = listener.local_addr().expect("Failed to get local address");
+
+    let server_future = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal());
+    
+    let handle = tokio::spawn(async move {
+        if let Err(e) = server_future.await {
+            tracing::error!("Server error {}", e);
+        }
+    });
+
+    (addr, handle)
 }
