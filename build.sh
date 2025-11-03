@@ -69,7 +69,7 @@ function generate_code() {
     echo "==> Generating Rust server from ${SPEC_FILE} into ${OUT_DIR}"
     java -jar "${GENERATOR_JAR}" generate \
         -i "${SPEC_FILE}" \
-        -g rust-server \
+        -g rust-axum \
         -o "${OUT_DIR}" \
         --additional-properties=packageName=sovd-api
 
@@ -136,6 +136,9 @@ CMD="${1:-start}"
 case "$CMD" in
     start)
         start
+        ;;
+    codegen)
+        generate_code
         ;;
     clean)
         clean_project
