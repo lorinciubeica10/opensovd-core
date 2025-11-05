@@ -423,32 +423,52 @@ pub fn find_single_process(
         processes.insert(process.pid().as_u32(), process);
     }
 
-    let first_entry = processes.first_entry().unwrap();
-    let mut process = first_entry.get();
+    // Safe: return None when no process found
+    let mut process_ref: &sysinfo::Process = match processes.first_entry() {
+        Some(entry) => entry.get(),
+        None => {
+            tracing::info!("find_single_process: no processes found for '{}'", process_name);
+            return None;
+        }
+    };
+
     if !process_pid.is_empty() {
-        let pid: u32 = process_pid.parse().unwrap();
-        process = processes.get(&pid).unwrap();
+        match process_pid.parse::<u32>() {
+            Ok(pid) => match processes.get(&pid) {
+                Some(p) => process_ref = *p,
+                None => {
+                    tracing::info!(
+                        "find_single_process: no process with pid '{}' for '{}'",
+                        pid,
+                        process_name
+                    );
+                    return None;
+                }
+            },
+            Err(_) => {
+                tracing::info!(
+                    "find_single_process: invalid pid '{}' provided for '{}'",
+                    process_pid,
+                    process_name
+                );
+                return None;
+            }
+        }
     }
+
     tracing::info!(
         "Found process with process_name: '{}' and pid: '{}'",
         process_name,
-        process.pid()
+        process_ref.pid()
     );
 
-    let name = process_name.replace(" ", "-"); // Replace spaces with hyphens
-    let pid_name = format!("{}-{}", name, process.pid());
-    let href = format!("{}/apps/{}", base_uri, pid_name); // Construct resource URI
-
-    tracing::info!(
-        "Creating EntityReference for pid: {}, pid_name: '{}', href: '{}'",
-        process.pid(),
-        pid_name,
-        href
-    );
+    let name = process_name.replace(" ", "-");
+    let pid_name = format!("{}-{}", name, process_ref.pid());
+    let href = format!("{}/apps/{}", base_uri, pid_name);
 
     let entity_ref =
-        EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href); // Create EntityReference
-    return Some(entity_ref); // Return the EntityReference immediately    
+        EntityCollectionGet200ResponseItemsInner::new(pid_name.clone(), name.clone(), href);
+    Some(entity_ref)
 }
 
 // Function to search and return processes

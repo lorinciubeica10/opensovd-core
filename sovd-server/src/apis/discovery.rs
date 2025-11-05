@@ -19,66 +19,80 @@ impl sovd_api::apis::discovery::Discovery for ServerImpl {
     /// AreasAreaIdRelatedComponentsGet - GET /v1/areas/{area_id}/related-components
     async fn areas_area_id_related_components_get(
         &self,
-
         method: &Method,
         host: &Host,
         cookies: &CookieJar,
         path_params: &models::AreasAreaIdRelatedComponentsGetPathParams,
     ) -> Result<AreasAreaIdRelatedComponentsGetResponse, ()> {
-        todo!();
+        Ok(AreasAreaIdRelatedComponentsGetResponse::Status0_AnUnexpectedRequestOccurred(
+            AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: related-components".to_owned()),
+        ))
     }
 
     /// AreasAreaIdSubareasGet - GET /v1/areas/{area_id}/subareas
     async fn areas_area_id_subareas_get(
         &self,
-
         method: &Method,
         host: &Host,
         cookies: &CookieJar,
         path_params: &models::AreasAreaIdSubareasGetPathParams,
         query_params: &models::AreasAreaIdSubareasGetQueryParams,
     ) -> Result<AreasAreaIdSubareasGetResponse, ()> {
-        todo!();
+        Ok(AreasAreaIdSubareasGetResponse::Status0_AnUnexpectedRequestOccurred(
+            AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: subareas".to_owned()),
+        ))
     }
 
     /// ComponentsComponentIdRelatedAppsGet - GET /v1/components/{component_id}/related-apps
     async fn components_component_id_related_apps_get(
         &self,
-
         method: &Method,
         host: &Host,
         cookies: &CookieJar,
         path_params: &models::ComponentsComponentIdRelatedAppsGetPathParams,
     ) -> Result<ComponentsComponentIdRelatedAppsGetResponse, ()> {
-        todo!();
+        // If request targets a different component, reply "not-responding"
+        if path_params.component_id != self.id {
+            return Ok(ComponentsComponentIdRelatedAppsGetResponse::Status0_AnUnexpectedRequestOccurred(
+                AnyPathDocsGetDefaultResponse::new(
+                    "not-responding".to_owned(),
+                    format!("Component {} did not respond.", path_params.component_id),
+                ),
+            ));
+        }
+
+        // Safe stub response (no panic)
+        Ok(ComponentsComponentIdRelatedAppsGetResponse::Status0_AnUnexpectedRequestOccurred(
+            AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: related-apps".to_owned()),
+        ))
     }
 
     /// ComponentsComponentIdSubcomponentsGet - GET /v1/components/{component_id}/subcomponents
     async fn components_component_id_subcomponents_get(
         &self,
-
         method: &Method,
         host: &Host,
         cookies: &CookieJar,
         path_params: &models::ComponentsComponentIdSubcomponentsGetPathParams,
         query_params: &models::ComponentsComponentIdSubcomponentsGetQueryParams,
     ) -> Result<ComponentsComponentIdSubcomponentsGetResponse, ()> {
-        todo!();
+        Ok(ComponentsComponentIdSubcomponentsGetResponse::Status0_AnUnexpectedRequestOccurred(
+            AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: subcomponents".to_owned()),
+        ))
     }
 
     /// EntityCollectionEntityIdGet - GET /v1/{entity_collection}/{entity_id}
     async fn entity_collection_entity_id_get(
         &self,
-
         method: &Method,
         host: &Host,
         cookies: &CookieJar,
         path_params: &models::EntityCollectionEntityIdGetPathParams,
     ) -> Result<EntityCollectionEntityIdGetResponse, ()> {
-        // Check, if requested entity_id is supported. TODO: include registered
-        // sub SOVD Servers. Currently, we support only the component which hosts the SOVD server
         match path_params.entity_collection.as_str() {
-            "areas" => todo!(),
+            "areas" => Ok(EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: areas".to_owned())
+            )),
             "components" => {
                 if path_params.entity_id != self.id {
                     return Ok(
@@ -108,30 +122,38 @@ impl sovd_api::apis::discovery::Discovery for ServerImpl {
                 ))
             },
             "apps" => {
-                let tokens = path_params.entity_id.split('-');
+                // avoid unwrap() on empty entity_id
+                let tokens: Vec<&str> = path_params.entity_id.split('-').collect();
+                let last_token = match tokens.last() {
+                    Some(t) => *t,
+                    None => {
+                        return Ok(EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                            AnyPathDocsGetDefaultResponse::new(
+                                "not-found".to_owned(),
+                                "Invalid app id".to_owned(),
+                            ),
+                        ));
+                    }
+                };
 
-                // Check, if last token is a number (is the PID in that case)
-                let last_token = tokens.clone().last().unwrap();
                 let pid = match last_token.parse::<u32>() {
                     Ok(pid) => pid.to_string(),
                     Err(_) => "".to_string(),
                 };
 
                 let mut resource = String::new();
-                for token in tokens {
-                    if token.ne(last_token) {
+                for token in &tokens {
+                    if *token != last_token {
                         resource.push_str(token);
                         resource.push('-');
                     } else if pid.is_empty() {
                         resource.push_str(token);
                     } else {
-                        resource.remove(resource.len() - 1);
+                        if !resource.is_empty() { resource.pop(); }
                     }
                 }
 
-                if let Some(app) = find_single_process(&resource, &pid, &format!("http://{}{}",
-                    host.0,
-                    sovd_api::BASE_PATH)) {
+                if let Some(app) = find_single_process(&resource, &pid, &format!("http://{}{}", host.0, sovd_api::BASE_PATH)) {
                     let mut response = EntityCollectionEntityIdGet200Response::new(
                         path_params.entity_id.clone(),
                         app.name.clone(),
@@ -143,16 +165,20 @@ impl sovd_api::apis::discovery::Discovery for ServerImpl {
                         path_params.entity_collection.to_owned(),
                         app.id.clone()
                     );
-
                     response.data = Some(app_data);
-
                     return Ok(EntityCollectionEntityIdGetResponse::Status200_TheResponseBodyContainsAPropertyForEachSupportedResourceAndRelatedCollection(response));
                 } else {
-                    todo!()
+                    return Ok(EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                        AnyPathDocsGetDefaultResponse::new("not-found".to_owned(), format!("App {} not found.", path_params.entity_id)),
+                    ));
                 }
-            }
-            "functions" => todo!(),
-            _ => todo!()
+            },
+            "functions" => Ok(EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: functions".to_owned())
+            )),
+            _ => Ok(EntityCollectionEntityIdGetResponse::Status0_AnUnexpectedRequestOccurred(
+                AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Unknown entity collection".to_owned())
+            )),
         }
     }
 
@@ -192,8 +218,12 @@ impl sovd_api::apis::discovery::Discovery for ServerImpl {
                     models::AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented yet".to_owned())
                 ))
             },
-            "functions" => todo!(),
-            _ => todo!()
+            "functions" => Ok(EntityCollectionGetResponse::Status0_AnUnexpectedRequestOccurred(
+                models::AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Not implemented: functions".to_owned())
+            )),
+            _ => Ok(EntityCollectionGetResponse::Status0_AnUnexpectedRequestOccurred(
+                models::AnyPathDocsGetDefaultResponse::new("-1".to_owned(), "Unknown entity collection".to_owned())
+            ))
         }
     }
 }

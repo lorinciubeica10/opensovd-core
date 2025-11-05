@@ -44,11 +44,11 @@ fn get_server_addr() -> String {
 
 // Builds the path for accessing app-specific resources
 fn build_app_path_resources(resource: &str) -> String {
-    let pid = get_process_pid("sovd-server").expect("Fail to read pid");
-    format!(
-        "v1/apps/sovd-server-{}/data/sovd-server-{}-{}",
-        pid, pid, resource
-    )
+    let node_name = SERVER_CONFIG.server.node_name.clone().replace(' ', "-");
+    let node_id = SERVER_CONFIG.server.node_id.clone();
+    let path = format!("v1/apps/{}-{}/data/{}-{}-{}", node_name, node_id, node_name, node_id, resource);
+
+    path
 }
 
 // Sends a GET request to the specified endpoint and asserts success
@@ -129,20 +129,19 @@ async fn get_related_apps() {
 // Integration test: Get information about a specific app using its PID
 #[tokio::test]
 async fn get_specific_app() {
-    let path = format!(
-        "v1/apps/sovd-server-{}",
-        get_process_pid("sovd-server").expect("Fail to read pid")
-    );
+   let node_name = SERVER_CONFIG.server.node_name.clone().replace(' ', "-");
+    let node_id = SERVER_CONFIG.server.node_id.clone();
+    let path = format!("v1/apps/{}-{}", node_name, node_id);
     get_and_assert_endpoint(&path).await;
 }
 
 // Integration test: Get data for a specific app
 #[tokio::test]
 async fn get_specific_app_data() {
-    let path = format!(
-        "v1/apps/sovd-server-{}/data",
-        get_process_pid("sovd-server").expect("Fail to read pid")
-    );
+    let node_name = SERVER_CONFIG.server.node_name.clone().replace(' ', "-");
+    let node_id = SERVER_CONFIG.server.node_id.clone();
+    let path = format!("v1/apps/{}-{}/data", node_name, node_id);
+
     get_and_assert_endpoint(&path).await;
 }
 

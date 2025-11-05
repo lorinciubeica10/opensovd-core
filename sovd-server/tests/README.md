@@ -30,12 +30,12 @@ This document provides an overview of the integration tests implemented for the 
 | `get_component_specific_disk_usage`   | `v1/components/chassis-hpc/data/chassis-hpc-disk`                             | Fetches disk usage data                          |
 | `get_component_specific_memory_usage` | `v1/components/chassis-hpc/data/chassis-hpc-memory`                           | Fetches memory usage data                        |
 | `get_related_apps`                    | `v1/components/chassis-hpc/related-apps`                                      | Fetches related applications                     |
-| `get_specific_app`                    | `v1/apps/sovd-server-<pid>`                                                   | Fetches specific app info using process PID      |
-| `get_specific_app_data`               | `v1/apps/sovd-server-<pid>/data`                                              | Fetches data for a specific app                  |
-| `get_specific_app_cpu`                | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-cpu`                        | Fetches CPU data for a specific app              |
-| `get_specific_app_memory`             | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-memory`                     | Fetches memory data for a specific app           |
-| `get_specific_app_disk`               | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-disk`                       | Fetches disk data for a specific app             |
-| `get_specific_app_all`                | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-all`                        | Fetches all data for a specific app              |
+| `get_specific_app`                    | `v1/apps/{node_name}-{node_id}`                                               | Fetches specific app info using process PID      |
+| `get_specific_app_data`               | `v1/apps/{node_name}-{node_id}/data`                                          | Fetches data for a specific app                  |
+| `get_specific_app_cpu`                | `v1/apps/{node_name}-{node_id}/data/{node_name}-{node_id}-cpu`                | Fetches CPU data for a specific app              |
+| `get_specific_app_memory`             | `v1/apps/{node_name}-{node_id}/data/{node_name}-{node_id}-memory`             | Fetches memory data for a specific app           |
+| `get_specific_app_disk`               | `v1/apps/{node_name}-{node_id}/data/{node_name}-{node_id}-disk`               | Fetches disk data for a specific app             |
+| `get_specific_app_all`                | `v1/apps/{node_name}-{node_id}/data/{node_name}-{node_id}-all`                | Fetches all data for a specific app              |
 
 ## Endpoint Behavior
 
