@@ -35,7 +35,8 @@ This document provides an overview of the integration tests implemented for the 
 | `get_specific_app_cpu`                | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-cpu`                        | Fetches CPU data for a specific app              |
 | `get_specific_app_memory`             | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-memory`                     | Fetches memory data for a specific app           |
 | `get_specific_app_disk`               | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-disk`                       | Fetches disk data for a specific app             |
-| `get_specific_app_all`                | `v1/apps/sovd-server-<pid>/data/sovd-server-<pid>-all`                        | Fetches all data for a specific app              |
+| `get_nonexistent_endpoint`            | `v1/components/nonexistent`                                                   | Fetches nonexistent endpoint                     |
+| `get_invalid_resource`                | `v1/components/chassis-hpc/data/invalid-resource`                             | Fetches nonexistent resource                     |
 
 ## Endpoint Behavior
 
